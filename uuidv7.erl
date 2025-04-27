@@ -1,4 +1,5 @@
-#! /usr/bin/env escript
+#!/usr/bin/env escript
+%% https://antonz.org/uuidv7/#erlang
 -module(uuidv7).
 
 -export([generate/0, main/1]).
