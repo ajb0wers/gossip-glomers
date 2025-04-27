@@ -18,6 +18,12 @@
 ./maelstrom test -w broadcast --bin ../broadcast.erl \
   --node-count 1 --time-limit 20 --rate 10
 ```
+## Docker
+
+```bash
+docker build -t ajb0wers/gossip-glomers .
+docker run -it --rm ajb0wers/gossip-glomers
+```
 
 ## See also
 
