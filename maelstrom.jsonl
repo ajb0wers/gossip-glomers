@@ -1,7 +1,6 @@
 {"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1"]}}
 {"src": "c1", "dest": "n1", "body": {"msg_id": 1, "type": "echo", "echo": "hello there"}}
 {"src": "c1", "dest": "n1", "body": {"msg_id": 1, "type": "generate"}}
-{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1"]}}
 {"src":"c1","dest":"n1","body":{"msg_id":1,"type":"topology","topology":{"n1":["n2","n3"],"n2":["n1"],"n3":["n1"]}}}
 {"src": "c1", "dest": "n1", "body": {"msg_id": 1, "type": "broadcast", "message": 1000}}
 {"src": "c1", "dest": "n1", "body": {"msg_id": 1, "type": "read"}}
