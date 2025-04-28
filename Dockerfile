@@ -11,7 +11,7 @@ RUN apt-get update && \
 RUN wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2
 RUN tar -xf maelstrom.tar.bz2
 
-COPY echo.erl .
+COPY echo.erl uniqueids.erl broadcast.erl .
 
 # Expose relevant ports
 EXPOSE 8080

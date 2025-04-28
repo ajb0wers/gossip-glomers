@@ -7,7 +7,7 @@
 
 ```Bash
 # Echo
-./maelstrom test -w echo --bin ../echo.erl --node-count 5 --time-limit 10
+./maelstrom test -w echo --bin /app/echo.erl --node-count 5 --time-limit 10
 
 # Unique ID Generation
 ./maelstrom test -w unique-ids --bin ../uniqueids.erl \
@@ -17,13 +17,17 @@
 # Single-Node Broadcast
 ./maelstrom test -w broadcast --bin ../broadcast.erl \
   --node-count 1 --time-limit 20 --rate 10
+
+# Multi-Node Broadcast
+./maelstrom test -w broadcast --bin ../broadcast.erl \
+  --node-count 5 --time-limit 20 --rate 10
 ```
 
 ## Podman
 
-```bash
+```Bash
 podman build -t ajb0wers/gossip-glomers .
-podman run -it --rm -w /app/maelstrom ajb0wers/gossip-glomers
+podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 ./maelstrom test -w echo --bin /app/echo.erl --node-count 5 --time-limit 10
 ```
 

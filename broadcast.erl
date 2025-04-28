@@ -1,6 +1,7 @@
 #!/usr/bin/env escript
 
 -define(PROMPT, "").
+-define(FORMAT, "~s~n").
 
 -record(state, {node_id=null, msgid=1, store=[], topology=#{}}).
 
@@ -12,12 +13,13 @@ loop(State) ->
   case io:get_line(?PROMPT) of
     Line when is_binary(Line) -> 
       Msg = json:decode(Line),
-      {Reply, NewState} = handle(Msg, State),
-      MsgOut = json:encode(Reply),
-      io:fwrite("~s~n", [MsgOut]),
+      {_Reply, NewState} = handle(Msg, State),
+      %% MsgOut = json:encode(Reply),
+      %% io:fwrite(?FORMAT, [MsgOut]),
       loop(NewState);
     _Eof -> ok
   end.
+
 
 handle(Msg, NodeId) ->
   #{<<"src">>  := Src,
@@ -46,6 +48,15 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
   Store = [Message|State#state.store],
   NewState = State#state{store=Store},
 
+  NodeId = State#state.node_id,
+  Topology = State#state.topology,
+
+  maybe 
+   #{NodeId := Neighbours} ?= Topology,
+   false ?= lists:any(fun(X) -> X == Message end, State#state.store),
+   lists:foreach(fun(N) -> gossip(N, Body, State) end, Neighbours)
+  end,
+
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
@@ -73,14 +84,24 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
     <<"type">> => <<"topology_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
-  }, NewState).
+  }, NewState);
+
+handle(_Tag, _Msg, State) -> {noreply, State}.
 
 
-reply(Dest, Src, Body, State) -> 
+reply(Dest, Src, Body, State) when State#state.node_id =:= Src -> 
   Reply = #{
-    <<"src">>  => Src,
     <<"dest">> => Dest, 
+    <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
+  io:fwrite(?FORMAT, [json:encode(Reply)]),
   {Reply, State}.
 
+gossip(Dest, Body, State) ->
+  Msg = #{
+      <<"dest">> => Dest, 
+      <<"src">>  => State#state.node_id,
+      <<"body">> => Body
+  },
+  io:fwrite(?FORMAT, [json:encode(Msg)]).
