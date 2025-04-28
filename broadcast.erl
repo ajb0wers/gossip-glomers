@@ -16,6 +16,7 @@ loop(State) ->
       {_Reply, NewState} = handle(Msg, State),
       %% MsgOut = json:encode(Reply),
       %% io:fwrite(?FORMAT, [MsgOut]),
+      %% lists:foreach(fun(R) -> io:fwrite(?FORMAT, [R]) end, Rs),
       loop(NewState);
     _Eof -> ok
   end.
@@ -54,7 +55,7 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
   maybe 
    #{NodeId := Neighbours} ?= Topology,
    false ?= lists:any(fun(X) -> X == Message end, State#state.store),
-   lists:foreach(fun(N) -> gossip(N, Body, State) end, Neighbours)
+   lists:foreach(fun(N) -> gossip(N, Message, State) end, Neighbours)
   end,
 
   reply(Src, Dest, #{
@@ -86,10 +87,14 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
+handle(<<"broadcast_ok">>, _Msg, State) -> {noreply, State};
 handle(_Tag, _Msg, State) -> {noreply, State}.
 
 
-reply(Dest, Src, Body, State) when State#state.node_id =:= Src -> 
+reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
+  reply(Dest, Body, State).
+
+reply(Dest, Body, State) -> 
   Reply = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.node_id,
@@ -98,10 +103,10 @@ reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   io:fwrite(?FORMAT, [json:encode(Reply)]),
   {Reply, State}.
 
-gossip(Dest, Body, State) ->
-  Msg = #{
-      <<"dest">> => Dest, 
-      <<"src">>  => State#state.node_id,
-      <<"body">> => Body
-  },
-  io:fwrite(?FORMAT, [json:encode(Msg)]).
+gossip(Dest, Message, State) ->
+  Body = #{
+    <<"type">>    => <<"broadcast">>,
+    <<"msg_id">>  => erlang:unique_integer([monotonic, positive]), 
+    <<"message">> => Message},
+  reply(Dest, Body, State).
+
