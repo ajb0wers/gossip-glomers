@@ -1,17 +1,21 @@
 # Build stage 0
 FROM erlang:27
 
+RUN apt-get update && \
+    apt-get -y install --no-install-recommends graphviz gnuplot wget default-jdk
+
 #Set working directory
 RUN mkdir /app
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get -y install --no-install-recommends graphviz gnuplot wget default-jdk
-
 RUN wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2
-RUN tar -xf maelstrom.tar.bz2
+RUN tar -xf maelstrom.tar.bz2 
+RUN rm maelstrom.tar.bz2
 
-COPY echo.erl uniqueids.erl broadcast.erl .
+RUN mkdir bin
+COPY echo uniqueids broadcast bin/ 
+
+WORKDIR /app/maelstrom
 
 # Expose relevant ports
 EXPOSE 8080
