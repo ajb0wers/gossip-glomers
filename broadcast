@@ -55,7 +55,10 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
   maybe 
    #{NodeId := Neighbours} ?= Topology,
    false ?= lists:any(fun(X) -> X == Message end, State#state.store),
-   lists:foreach(fun(N) -> gossip(N, Message, State) end, Neighbours)
+   lists:foreach(fun
+		 (N) when Src =/= N -> gossip(N, Message, State);
+		 (_) -> ok
+	 end, Neighbours)
   end,
 
   reply(Src, Dest, #{
