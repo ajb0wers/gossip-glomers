@@ -1,4 +1,7 @@
-#!/usr/bin/env escript
+#!/usr/bin/env -S escript -c
+-module(broadcast).
+
+-export([print/0]).
 
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
@@ -7,27 +10,33 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
+	register(printer, spawn(?MODULE, print, [])),
   loop(#state{}).
 
 loop(State) ->
   case io:get_line(?PROMPT) of
     Line when is_binary(Line) -> 
       Msg = json:decode(Line),
-      {_Reply, NewState} = handle(Msg, State),
-      %% MsgOut = json:encode(Reply),
-      %% io:fwrite(?FORMAT, [MsgOut]),
-      %% lists:foreach(fun(R) -> io:fwrite(?FORMAT, [R]) end, Rs),
+      {_, NewState} = handle(Msg, State),
       loop(NewState);
     _Eof -> ok
   end.
 
+print() ->
+	receive 
+		{msg, Msg} ->
+			io:fwrite(?FORMAT, [json:encode(Msg)]),
+			print();
+		_ -> ok
+	end.
 
-handle(Msg, NodeId) ->
+	
+handle(Msg, State) ->
   #{<<"src">>  := Src,
     <<"dest">> := Dest,
     <<"body">> := Body} = Msg,
   #{<<"type">> := Tag} = Body,
-  handle(Tag, {Src, Dest, Body}, NodeId).
+  handle(Tag, {Src, Dest, Body}, State).
 
 handle(<<"init">> = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
@@ -46,26 +55,28 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
     <<"msg_id">>  := MsgId,
     <<"message">> := Message} = Body,
 
-  Store = [Message|State#state.store],
-  NewState = State#state{store=Store},
-
   NodeId = State#state.node_id,
   Topology = State#state.topology,
-
-  maybe 
-   #{NodeId := Neighbours} ?= Topology,
-   false ?= lists:any(fun(X) -> X == Message end, State#state.store),
-   lists:foreach(fun
-		 (N) when Src =/= N -> gossip(N, Message, State);
-		 (_) -> ok
-	 end, Neighbours)
-  end,
 
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
-  }, NewState);
+  }, State),
+
+  maybe 
+		#{NodeId := Neighbours} ?= Topology,
+		false ?= lists:any(fun(X) -> X == Message end, State#state.store),
+		lists:foreach(fun
+			(N) when N =:= Src -> ok;
+			(N) -> broadcast(N, Message, State)
+		end, Neighbours)
+  end,
+
+  Store = [Message|State#state.store],
+  NewState = State#state{store=Store},
+	{noreply, NewState};
+
 
 handle(<<"read">> = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">> := Tag, <<"msg_id">> := MsgId} = Body,
@@ -103,10 +114,11 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-  io:fwrite(?FORMAT, [json:encode(Reply)]),
+	printer ! {msg, Reply},
+	%% io:format(?FORMAT, [json:encode(Reply)]),
   {Reply, State}.
 
-gossip(Dest, Message, State) ->
+broadcast(Dest, Message, State) ->
   Body = #{
     <<"type">>    => <<"broadcast">>,
     <<"msg_id">>  => erlang:unique_integer([monotonic, positive]), 
