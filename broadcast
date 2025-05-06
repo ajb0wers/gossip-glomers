@@ -55,23 +55,14 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
     <<"msg_id">>  := MsgId,
     <<"message">> := Message} = Body,
 
-  NodeId = State#state.node_id,
-  Topology = State#state.topology,
-
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
   }, State),
 
-  maybe 
-		#{NodeId := Neighbours} ?= Topology,
-		false ?= lists:any(fun(X) -> X == Message end, State#state.store),
-		lists:foreach(fun
-			(N) when N =:= Src -> ok;
-			(N) -> broadcast(N, Message, State)
-		end, Neighbours)
-  end,
+ %% TODO: handle {continue, action}
+	gossip(Src, Message, State),
 
   Store = [Message|State#state.store],
   NewState = State#state{store=Store},
@@ -104,6 +95,17 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
 handle(<<"broadcast_ok">>, _Msg, State) -> {noreply, State};
 handle(_Tag, _Msg, State) -> {noreply, State}.
 
+gossip(Src, Message, State) ->
+  NodeId = State#state.node_id,
+  Topology = State#state.topology,
+  maybe 
+		#{NodeId := Neighbours} ?= Topology,
+		false ?= lists:any(fun(X) -> X == Message end, State#state.store),
+		lists:foreach(fun
+			(N) when N =:= Src -> ok;
+			(N) -> broadcast(N, Message, State)
+		end, Neighbours)
+  end.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).

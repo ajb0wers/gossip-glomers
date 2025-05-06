@@ -21,7 +21,12 @@
 # Multi-Node Broadcast
 ./maelstrom test -w broadcast --bin ../broadcast \
   --node-count 5 --time-limit 20 --rate 10
+
+# maelstrom ruby demo using asdf-vm
+./maelstrom test -w broadcast --bin $(asdf which ruby) \
+  --node-count 5 --time-limit 20 --rate 10 ${PWD}/demo/ruby/broadcast.rb
 ```
+
 
 ## Podman
 
