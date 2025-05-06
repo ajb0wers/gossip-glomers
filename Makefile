@@ -1,12 +1,7 @@
-.PHONY: all echo uniqueids broadcast
+.PHONY: all
 
-all: echo uniqueids broadcast
-
-echo:
+all:
 	escript -s echo
-
-uniqueids:
 	escript -s uniqueids
-
-broadcast: 
 	escript -s broadcast
+
