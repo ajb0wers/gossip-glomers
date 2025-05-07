@@ -8,9 +8,10 @@ RUN apt-get update && \
 RUN mkdir /app
 WORKDIR /app
 
-RUN wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2
-RUN tar -xf maelstrom.tar.bz2 
-RUN rm maelstrom.tar.bz2
+RUN wget --progress=dot:mega \
+    https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 && \
+    tar -xf maelstrom.tar.bz2  && \
+    rm maelstrom.tar.bz2
 
 RUN mkdir bin
 COPY echo uniqueids broadcast bin/ 

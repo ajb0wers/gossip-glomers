@@ -7,7 +7,7 @@
 
 ```Bash
 # Echo
-./maelstrom test -w echo --bin /app/echo --node-count 5 --time-limit 10
+./maelstrom test -w echo --bin ../echo --node-count 5 --time-limit 10
 
 # Unique ID Generation
 ./maelstrom test -w unique-ids --bin ../uniqueids \
@@ -33,7 +33,11 @@
 ```Bash
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
+
 ./maelstrom test -w echo --bin /app/bin/echo --node-count 5 --time-limit 10
+
+./maelstrom test -w broadcast --bin demo/ruby/broadcast.rb \
+  --node-count 5 --time-limit 20 --rate 10
 ``
 
 ## See also
