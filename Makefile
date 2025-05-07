@@ -1,7 +1,7 @@
 .PHONY: all
 
 all:
-	escript -s echo
-	escript -s uniqueids
-	escript -s broadcast
+	escript -s echo.erl
+	escript -s uniqueids.erl
+	escript -s broadcast.erl
 
