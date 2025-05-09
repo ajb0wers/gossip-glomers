@@ -1,10 +1,12 @@
-.PHONY: all maelstrom
+.PHONY: all maelstrom escript
 
-all:
+all: check-escript
+
+check-escript:
 	escript -s echo
 	escript -s uniqueids
 	escript -s broadcast
 
-maelstrom:
+maelstrom: check-escript
 	podman build -t ajb0wers/gossip-glomers .
 	podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers

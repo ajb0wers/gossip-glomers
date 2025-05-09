@@ -30,6 +30,23 @@ print() ->
 		_ -> ok
 	end.
 
+handle1(Msg, State) ->
+  #{<<"src">>  := Src,
+    <<"dest">> := Dest,
+    <<"body">> := Body} = Msg,
+  #{<<"type">> := Tag} = Body,
+  case handle(Tag, {Src, Dest, Body}, State) of
+		{noreply, State} ->
+			{ok, State};
+		{Reply, State} ->
+			printer ! {msg, Reply},
+			{ok, State};
+		{ok, Reply, N, State} ->
+			printer ! {msg, Reply},
+			%% gossip(N, State)
+			{ok, State}
+	end.
+
 	
 handle(Msg, State) ->
   #{<<"src">>  := Src,
@@ -61,7 +78,6 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State),
 
- %% TODO: handle {continue, action}
 	gossip(Src, Message, State),
 
   Store = [Message|State#state.store],

@@ -22,23 +22,11 @@
 ./maelstrom test -w broadcast --bin ../broadcast \
   --node-count 5 --time-limit 20 --rate 10
 
-# e.g. Using asdf to run maelstrom ruby demos
-./maelstrom test -w broadcast --bin $(asdf which ruby) \
-  --node-count 5 --time-limit 20 --rate 10 ${PWD}/demo/ruby/broadcast.rb
-```
-
-
-## Podman
-
-```Bash
+# Running `maelstrom` in an Erlang based container:
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
-
 ./maelstrom test -w echo --bin /app/bin/echo --node-count 5 --time-limit 10
-
-./maelstrom test -w broadcast --bin demo/ruby/broadcast.rb \
-  --node-count 5 --time-limit 20 --rate 10
-``
+```
 
 ## See also
 

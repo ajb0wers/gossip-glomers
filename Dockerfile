@@ -8,7 +8,7 @@ RUN apt-get update && \
 RUN mkdir /app
 WORKDIR /app
 
-RUN wget --progress=dot:mega \
+RUN wget --no-verbose \
     https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 && \
     tar -xf maelstrom.tar.bz2  && \
     rm maelstrom.tar.bz2
