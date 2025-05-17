@@ -6,7 +6,11 @@
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
--record(state, {node_id=null, msgid=1, store=[], topology=#{}}).
+-record(state, {
+	node_id=null,
+	store=[],
+	topology=#{},
+	callbacks=#{}}).
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
@@ -43,7 +47,7 @@ handle1(Msg, State) ->
 			{ok, State};
 		{ok, Reply, N, State} ->
 			printer ! {msg, Reply},
-			%% gossip(N, State)
+			gossip(Src, N, State),
 			{ok, State}
 	end.
 
@@ -143,3 +147,11 @@ broadcast(Dest, Message, State) ->
     <<"message">> => Message},
   reply(Dest, Body, State).
 
+
+gossip_serv(State) ->
+	receive
+		{rpc, Msg} ->
+			printer ! {msg, Msg};
+		{ok, MsgId} ->
+			ok	
+	end.
