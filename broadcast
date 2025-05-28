@@ -21,12 +21,13 @@ loop() ->
     Line when is_binary(Line) -> 
 			server ! {line, Line},
       loop();
-		{error, _} -> erlang:halt(1);
     eof ->
-			server ! {stop, self()},
-			receive ok -> erlang:halt(0) end
+			stop()
   end.
 
+stop() ->
+	server ! {eof, self()},
+	receive ok -> erlang:halt(0) end.
 
 server(State) ->
 	receive
@@ -34,6 +35,9 @@ server(State) ->
       Msg = json:decode(Line),
 			{ok, NewState} = handle(Msg, State),
 			server(NewState);
+		{eof, From} ->
+			self() ! {stop, From},
+			server(State);
 		{stop, From} ->
 			From ! ok;
 		Msg ->
@@ -112,6 +116,7 @@ handle_info({rpc, Msg}, State) ->
 	io:format(?FORMAT, [json:encode(Msg)]),
 	{ok, State}.
 
+
 gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
@@ -146,6 +151,7 @@ broadcast(Dest, Message, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
+	%% TODO: {ok, _TRef} = timer:send_interval(1000, {rpc, Msg}).
 	self() ! {rpc, Msg}.
 
 
