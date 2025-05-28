@@ -1,8 +1,6 @@
 #!/usr/bin/env -S escript -c
 -module(broadcast).
-
--export([print/0]).
-
+-export([server/1]).
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
@@ -14,44 +12,30 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-	register(printer, spawn(?MODULE, print, [])),
-  loop(#state{}).
+	Pid = spawn(?MODULE, server, [#state{}]),
+	register(server, Pid),
+  loop().
 
-loop(State) ->
+loop() ->
   case io:get_line(?PROMPT) of
     Line when is_binary(Line) -> 
-      Msg = json:decode(Line),
-      {_, NewState} = handle(Msg, State),
-      loop(NewState);
-    _Eof -> ok
+			server ! {line, Line},
+      loop();
+    eof -> erlang:halt(0);
+		{error, _} -> erlang:halt(1)
   end.
 
-print() ->
-	receive 
-		{msg, Msg} ->
-			io:fwrite(?FORMAT, [json:encode(Msg)]),
-			print();
-		_ -> ok
+server(State) ->
+	receive
+		{line, Line} ->
+      Msg = json:decode(Line),
+			{ok, NewState} = handle(Msg, State),
+			server(NewState);
+		Msg ->
+			{ok, NewState} = handle_info(Msg, State),
+			server(NewState)
 	end.
 
-handle1(Msg, State) ->
-  #{<<"src">>  := Src,
-    <<"dest">> := Dest,
-    <<"body">> := Body} = Msg,
-  #{<<"type">> := Tag} = Body,
-  case handle(Tag, {Src, Dest, Body}, State) of
-		{noreply, State} ->
-			{ok, State};
-		{Reply, State} ->
-			printer ! {msg, Reply},
-			{ok, State};
-		{ok, Reply, N, State} ->
-			printer ! {msg, Reply},
-			gossip(Src, N, State),
-			{ok, State}
-	end.
-
-	
 handle(Msg, State) ->
   #{<<"src">>  := Src,
     <<"dest">> := Dest,
@@ -86,7 +70,7 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
 
   Store = [Message|State#state.store],
   NewState = State#state{store=Store},
-	{noreply, NewState};
+	{ok, NewState};
 
 
 handle(<<"read">> = Tag, {Src, Dest, Body}, State) ->
@@ -115,6 +99,14 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
 handle(<<"broadcast_ok">>, _Msg, State) -> {noreply, State};
 handle(_Tag, _Msg, State) -> {noreply, State}.
 
+handle_info({reply, Reply}, State) ->
+	io:format(?FORMAT, [json:encode(Reply)]),
+	{ok, State};
+
+handle_info({rpc, Msg}, State) ->
+	io:format(?FORMAT, [json:encode(Msg)]),
+	{ok, State}.
+
 gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
@@ -136,22 +128,21 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-	printer ! {msg, Reply},
-	%% io:format(?FORMAT, [json:encode(Reply)]),
-  {Reply, State}.
+	self() ! {reply, Reply},
+	{ok, State}.
 
 broadcast(Dest, Message, State) ->
   Body = #{
     <<"type">>    => <<"broadcast">>,
     <<"msg_id">>  => erlang:unique_integer([monotonic, positive]), 
     <<"message">> => Message},
-  reply(Dest, Body, State).
+  Msg = #{
+    <<"dest">> => Dest, 
+    <<"src">>  => State#state.node_id,
+    <<"body">> => Body
+  },
+	self() ! {rpc, Msg}.
 
 
-gossip_serv(State) ->
-	receive
-		{rpc, Msg} ->
-			printer ! {msg, Msg};
-		{ok, MsgId} ->
-			ok	
-	end.
+
+
