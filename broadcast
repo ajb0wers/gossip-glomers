@@ -1,6 +1,6 @@
 #!/usr/bin/env -S escript -c
 -module(broadcast).
--export([server/1]).
+-export([init/0]).
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
@@ -12,8 +12,7 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-	Pid = spawn(?MODULE, server, [#state{}]),
-	register(server, Pid),
+	spawn(?MODULE, init, []),
   loop().
 
 loop() ->
@@ -21,13 +20,17 @@ loop() ->
     Line when is_binary(Line) -> 
 			server ! {line, Line},
       loop();
-    eof ->
-			stop()
+    eof -> stop()
   end.
 
 stop() ->
 	server ! {eof, self()},
 	receive ok -> erlang:halt(0) end.
+
+init() ->
+	process_flag(trap_exit, true),
+	register(server, self()),
+	server(#state{}).
 
 server(State) ->
 	receive
