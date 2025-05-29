@@ -8,11 +8,12 @@
 	node_id=null,
 	store=[],
 	topology=#{},
-	callbacks=#{}}).
+	callbacks=#{},
+  timers=#{}}).
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-	spawn(?MODULE, init, []),
+	spawn_link(?MODULE, init, []),
   loop().
 
 loop() ->
@@ -20,7 +21,8 @@ loop() ->
     Line when is_binary(Line) -> 
 			server ! {line, Line},
       loop();
-    eof -> stop()
+    eof ->
+      stop()
   end.
 
 stop() ->
@@ -28,7 +30,6 @@ stop() ->
 	receive ok -> erlang:halt(0) end.
 
 init() ->
-	process_flag(trap_exit, true),
 	register(server, self()),
 	server(#state{}).
 
@@ -38,14 +39,14 @@ server(State) ->
       Msg = json:decode(Line),
 			{ok, NewState} = handle(Msg, State),
 			server(NewState);
+		{info, Msg} ->
+			{ok, NewState} = handle_info(Msg, State),
+			server(NewState);
 		{eof, From} ->
 			self() ! {stop, From},
 			server(State);
 		{stop, From} ->
-			From ! ok;
-		Msg ->
-			{ok, NewState} = handle_info(Msg, State),
-			server(NewState)
+			From ! ok
 	end.
 
 handle(Msg, State) ->
@@ -108,7 +109,25 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(<<"broadcast_ok">>, _Msg, State) -> {ok, State};
+handle(<<"broadcast_ok">>, Msg, State) ->
+  Timers = State#state.timers,
+
+  Unacked = maybe
+    #{~"in_reply_to" := MsgId} ?= Msg,
+    #{MsgId := TRef} ?= Timers, 
+    {ok, MsgId, TRef}
+  end,
+
+  case Unacked of
+    {ok, Ref, Id} ->
+      timers:cancel(Ref),
+      NewState = State#state{timers = maps:remove(Id, Timers)},
+      {ok, NewState};
+    _ ->
+      {ok, State}
+  end;
+
+
 handle(_Tag, _Msg, State) -> {ok, State}.
 
 handle_info({reply, Reply}, State) ->
@@ -117,7 +136,13 @@ handle_info({reply, Reply}, State) ->
 
 handle_info({rpc, Msg}, State) ->
 	io:format(?FORMAT, [json:encode(Msg)]),
-	{ok, State}.
+	{ok, State};
+
+handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
+	io:format(?FORMAT, [json:encode(Msg)]),
+  {ok, TRef} = timer:send_after(Time, {info, Info}),
+  NewState = State#state{timers = Timers#{Id => TRef}},
+	{ok, NewState}.
 
 
 gossip(Src, Message, State) ->
@@ -141,21 +166,22 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-	self() ! {reply, Reply},
+	self() ! {info, {reply, Reply}},
 	{ok, State}.
 
 broadcast(Dest, Message, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
   Body = #{
     <<"type">>    => <<"broadcast">>,
-    <<"msg_id">>  => erlang:unique_integer([monotonic, positive]), 
+    <<"msg_id">>  => MsgId,
     <<"message">> => Message},
   Msg = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-	%% TODO: {ok, _TRef} = timer:send_interval(1000, {rpc, Msg}).
-	self() ! {rpc, Msg}.
+	self() ! {info, {rpc, Msg, MsgId, 1000}}.
+	%% self() ! {rpc, Msg}.
 
 
 
