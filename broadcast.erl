@@ -56,7 +56,7 @@ handle(Msg, State) ->
   #{<<"type">> := Tag} = Body,
   handle(Tag, {Src, Dest, Body}, State).
 
-handle(<<"init">> = Tag, {Src, Dest, Body}, _State) ->
+handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
     <<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
@@ -68,7 +68,7 @@ handle(<<"init">> = Tag, {Src, Dest, Body}, _State) ->
   }, #state{node_id=NodeId});
 
 
-handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
+handle(~"broadcast" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">>    := Tag,
     <<"msg_id">>  := MsgId,
     <<"message">> := Message} = Body,
@@ -79,14 +79,18 @@ handle(<<"broadcast">> = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State),
 
-	gossip(Src, Message, State),
+  NewState = case lists:member(Message, State#state.store) of
+    true -> State;
+    _ -> 
+      gossip(Src, Message, State),
+      Store = [Message|State#state.store],
+      State#state{store=Store}
+  end,
 
-  Store = [Message|State#state.store],
-  NewState = State#state{store=Store},
 	{ok, NewState};
 
 
-handle(<<"read">> = Tag, {Src, Dest, Body}, State) ->
+handle(~"read" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">> := Tag, <<"msg_id">> := MsgId} = Body,
 
   reply(Src, Dest, #{
@@ -96,7 +100,7 @@ handle(<<"read">> = Tag, {Src, Dest, Body}, State) ->
     <<"messages">> => State#state.store
   }, State);
 
-handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
+handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">>    := Tag,
     <<"msg_id">>  := MsgId,
     <<"topology">> := Topology} = Body,
@@ -109,7 +113,7 @@ handle(<<"topology">> = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(<<"broadcast_ok">>, Msg, State) ->
+handle(~"broadcast_ok", Msg, State) ->
   Timers = State#state.timers,
 
   Unacked = maybe
