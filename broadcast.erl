@@ -94,15 +94,15 @@ handle(~"read" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">> := Tag, <<"msg_id">> := MsgId} = Body,
 
   reply(Src, Dest, #{
-    <<"type">> => <<"read_ok">>,
-    <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
+    <<"type">>        => <<"read_ok">>,
+    <<"msg_id">>      => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId,
-    <<"messages">> => State#state.store
+    <<"messages">>    => State#state.store
   }, State);
 
 handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
-  #{<<"type">>    := Tag,
-    <<"msg_id">>  := MsgId,
+  #{<<"type">>     := Tag,
+    <<"msg_id">>   := MsgId,
     <<"topology">> := Topology} = Body,
 
   NewState = State#state{topology=Topology},
@@ -185,7 +185,6 @@ broadcast(Dest, Message, State) ->
     <<"body">> => Body
   },
 	self() ! {info, {rpc, Msg, MsgId, 1000}}.
-	%% self() ! {rpc, Msg}.
 
 
 
