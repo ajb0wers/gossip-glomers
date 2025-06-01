@@ -1,6 +1,6 @@
 #!/usr/bin/env -S escript -c
 -module(broadcast).
--export([init/0]).
+-export([init/0, handle_rpc/1]).
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
@@ -31,6 +31,7 @@ stop() ->
 
 init() ->
 	register(server, self()),
+	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
 	server(#state{}).
 
 server(State) ->
@@ -49,12 +50,16 @@ server(State) ->
 			From ! ok
 	end.
 
+
 handle(Msg, State) ->
   #{<<"src">>  := Src,
     <<"dest">> := Dest,
     <<"body">> := Body} = Msg,
+
   #{<<"type">> := Tag} = Body,
+
   handle(Tag, {Src, Dest, Body}, State).
+
 
 handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
@@ -113,23 +118,27 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(~"broadcast_ok", Msg, State) ->
-  Timers = State#state.timers,
+handle(~"broadcast_ok", #{~"in_reply_to" := MsgId} = _Msg, State) ->
+  server_rpc ! {ok, MsgId},
+  {ok, State};
 
-  Unacked = maybe
-    #{~"in_reply_to" := MsgId} ?= Msg,
-    #{MsgId := TRef} ?= Timers, 
-    {ok, MsgId, TRef}
-  end,
-
-  case Unacked of
-    {ok, Ref, Id} ->
-      timers:cancel(Ref),
-      NewState = State#state{timers = maps:remove(Id, Timers)},
-      {ok, NewState};
-    _ ->
-      {ok, State}
-  end;
+%% handle(~"broadcast_ok", Msg, State) ->
+%%   Timers = State#state.timers,
+%% 
+%%   Unacked = maybe
+%%     #{~"in_reply_to" := MsgId} ?= Msg,
+%%     #{MsgId := TRef} ?= Timers, 
+%%     {ok, MsgId, TRef}
+%%   end,
+%% 
+%%   case Unacked of
+%%     {ok, Ref, Id} ->
+%%       timers:cancel(Ref),
+%%       NewState = State#state{timers = maps:remove(Id, Timers)},
+%%       {ok, NewState};
+%%     _ ->
+%%       {ok, State}
+%%   end;
 
 
 handle(_Tag, _Msg, State) -> {ok, State}.
@@ -152,9 +161,10 @@ handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
 gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
+  Data = State#state.store,
   maybe 
 		#{NodeId := Neighbours} ?= Topology,
-		false ?= lists:any(fun(X) -> X == Message end, State#state.store),
+		false ?= lists:any(fun(X) -> X == Message end, Data),
 		lists:foreach(fun
 			(N) when N =:= Src -> ok;
 			(N) -> broadcast(N, Message, State)
@@ -170,22 +180,40 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-	self() ! {info, {reply, Reply}},
+	%% self() ! {info, {reply, Reply}},
+  server_rpc ! {reply, Reply},
 	{ok, State}.
 
 broadcast(Dest, Message, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Body = #{
-    <<"type">>    => <<"broadcast">>,
-    <<"msg_id">>  => MsgId,
-    <<"message">> => Message},
-  Msg = #{
-    <<"dest">> => Dest, 
-    <<"src">>  => State#state.node_id,
-    <<"body">> => Body
-  },
-	self() ! {info, {rpc, Msg, MsgId, 1000}}.
+  Msg = broadcast_msg(MsgId, State#state.node_id, Dest, Message),
+  server_rpc ! {rpc, Msg, MsgId, 1000}.
 
+broadcast_msg(MsgId, Src, Dest, Message) ->
+  #{<<"dest">> => Dest, 
+    <<"src">>  => Src,
+    <<"body">> => #{
+      <<"type">>    => <<"broadcast">>,
+      <<"msg_id">>  => MsgId,
+      <<"message">> => Message}}.
 
+handle_rpc(State) ->
+  receive
+    {rpc, Msg, Id, Time} ->
+      io:format(?FORMAT, [json:encode(Msg)]),
+      {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
+      NewState = State#{Id => TRef},
+      handle_rpc(NewState);
+    {ok, Id} ->
+      #{Id := Timer} = State,
+      timer:cancel(Timer),
+      NewState = maps:remove(Id, State),
+      handle_rpc(NewState);
+    {reply, Msg} ->
+      io:format(?FORMAT, [json:encode(Msg)]),
+      handle_rpc(State);
+    _ ->
+      handle_rpc(State)
+  end.
 
 
