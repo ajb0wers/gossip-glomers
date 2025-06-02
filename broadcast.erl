@@ -162,7 +162,6 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body
   },
-	%% self() ! {info, {reply, Reply}},
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
