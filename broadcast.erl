@@ -118,28 +118,10 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(~"broadcast_ok", #{~"in_reply_to" := MsgId} = _Msg, State) ->
+handle(~"broadcast_ok", {_, _, Body}, State) ->
+  #{~"in_reply_to" := MsgId} = Body,
   server_rpc ! {ok, MsgId},
   {ok, State};
-
-%% handle(~"broadcast_ok", Msg, State) ->
-%%   Timers = State#state.timers,
-%% 
-%%   Unacked = maybe
-%%     #{~"in_reply_to" := MsgId} ?= Msg,
-%%     #{MsgId := TRef} ?= Timers, 
-%%     {ok, MsgId, TRef}
-%%   end,
-%% 
-%%   case Unacked of
-%%     {ok, Ref, Id} ->
-%%       timers:cancel(Ref),
-%%       NewState = State#state{timers = maps:remove(Id, Timers)},
-%%       {ok, NewState};
-%%     _ ->
-%%       {ok, State}
-%%   end;
-
 
 handle(_Tag, _Msg, State) -> {ok, State}.
 
