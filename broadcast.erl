@@ -6,7 +6,7 @@
 
 -record(state, {
 	node_id=null,
-	store=[],
+	data=[],
 	topology=#{},
 	callbacks=#{},
   timers=#{}}).
@@ -84,12 +84,16 @@ handle(~"broadcast" = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State),
 
-  NewState = case lists:member(Message, State#state.store) of
-    true -> State;
+  NewState = case lists:member(Message, State#state.data) of
+    true ->
+      State;
     _ -> 
-      gossip(Src, Message, State),
-      Store = [Message|State#state.store],
-      State#state{store=Store}
+      Data = [Message|State#state.data],
+      %% Extra = maps:get(<<"Data">>, Body, [Message]), 
+      %% Data = lists:uniq(lists:merge(Data, State#state.data)),
+      NewState0 = State#state{data=Data},
+      gossip(Src, Message, NewState0),
+      NewState0
   end,
 
 	{ok, NewState};
@@ -102,7 +106,7 @@ handle(~"read" = Tag, {Src, Dest, Body}, State) ->
     <<"type">>        => <<"read_ok">>,
     <<"msg_id">>      => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId,
-    <<"messages">>    => State#state.store
+    <<"messages">>    => State#state.data
   }, State);
 
 handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
@@ -133,7 +137,7 @@ handle_info({rpc, Msg}, State) ->
 	io:format(?FORMAT, [json:encode(Msg)]),
 	{ok, State};
 
-handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
+handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
 	io:format(?FORMAT, [json:encode(Msg)]),
   {ok, TRef} = timer:send_after(Time, {info, Info}),
   NewState = State#state{timers = Timers#{Id => TRef}},
@@ -143,10 +147,8 @@ handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
 gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
-  Data = State#state.store,
   maybe 
 		#{NodeId := Neighbours} ?= Topology,
-		false ?= lists:any(fun(X) -> X == Message end, Data),
 		lists:foreach(fun
 			(N) when N =:= Src -> ok;
 			(N) -> broadcast(N, Message, State)
@@ -165,18 +167,19 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-broadcast(Dest, Message, State) ->
+broadcast(Dest, Message, #state{node_id=Src, data=Data} = _State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Msg = broadcast_msg(MsgId, State#state.node_id, Dest, Message),
+  Msg = broadcast_msg(MsgId, Src, Dest, Message, Data),
   server_rpc ! {rpc, Msg, MsgId, 1000}.
 
-broadcast_msg(MsgId, Src, Dest, Message) ->
+broadcast_msg(MsgId, Src, Dest, Message, Data) ->
   #{<<"dest">> => Dest, 
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
       <<"msg_id">>  => MsgId,
-      <<"message">> => Message}}.
+      <<"message">> => Message,
+      <<"data">>    => Data}}.
 
 handle_rpc(State) ->
   receive
