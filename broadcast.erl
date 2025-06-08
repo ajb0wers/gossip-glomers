@@ -7,8 +7,8 @@
 -record(state, {
 	node_id=null,
 	data=[],
+  messages=[],
 	topology=#{},
-	callbacks=#{},
   timers=#{}}).
 
 main([]) -> 
@@ -32,13 +32,14 @@ stop() ->
 init() ->
 	register(server, self()),
 	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
+  timer:send_interval(100, server, {info, broadcast}),
 	server(#state{}).
 
 server(State) ->
 	receive
 		{line, Line} ->
       Msg = json:decode(Line),
-			{ok, NewState} = handle(Msg, State),
+			{ok, NewState} = handle_line(Msg, State),
 			server(NewState);
 		{info, Msg} ->
 			{ok, NewState} = handle_info(Msg, State),
@@ -51,15 +52,10 @@ server(State) ->
 	end.
 
 
-handle(Msg, State) ->
-  #{<<"src">>  := Src,
-    <<"dest">> := Dest,
-    <<"body">> := Body} = Msg,
-
+handle_line(Msg, State) ->
+  #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
   #{<<"type">> := Tag} = Body,
-
   handle(Tag, {Src, Dest, Body}, State).
-
 
 handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
@@ -77,27 +73,28 @@ handle(~"broadcast" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">>    := Tag,
     <<"msg_id">>  := MsgId,
     <<"message">> := Message} = Body,
+   
+  NewState = case Message of
+    Message when is_list(Message) -> State;
+    _ ->
+      case lists:member(Message, State#state.data) of
+        true ->
+          State;
+        _ -> 
+          Data = [Message|State#state.data],
+          Messages = State#state.messages,
+          List = gossip1(Src, Message, State),
+          NewState0 = State#state{data=Data, messages=List++Messages},
+          gossip(Src, Message, NewState0),
+          NewState0
+      end
+  end,
 
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
-  }, State),
-
-  NewState = case lists:member(Message, State#state.data) of
-    true ->
-      State;
-    _ -> 
-      Data = [Message|State#state.data],
-      %% Extra = maps:get(<<"Data">>, Body, [Message]), 
-      %% Data = lists:uniq(lists:merge(Data, State#state.data)),
-      NewState0 = State#state{data=Data},
-      gossip(Src, Message, NewState0),
-      NewState0
-  end,
-
-	{ok, NewState};
-
+  }, NewState);
 
 handle(~"read" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">> := Tag, <<"msg_id">> := MsgId} = Body,
@@ -141,8 +138,26 @@ handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
 	io:format(?FORMAT, [json:encode(Msg)]),
   {ok, TRef} = timer:send_after(Time, {info, Info}),
   NewState = State#state{timers = Timers#{Id => TRef}},
-	{ok, NewState}.
+	{ok, NewState};
 
+handle_info(broadcast, #state{node_id=Src,messages=Messages} = State) ->
+  case Messages of
+    [] -> {ok, State};
+    _ ->
+      Map = maps:groups_from_list(fun ({Dest, _}) -> Dest end, Messages),
+      maps:foreach(fun (Dest, Values) ->
+        MsgId = erlang:unique_integer([monotonic, positive]), 
+        Msg = broadcast_msg(MsgId, Src, Dest, [N || {_,N} <- Values]),
+        server_rpc ! {rpc, Msg, MsgId, 1000}
+      end, Map),
+      {ok, State#state{messages=[]}}
+  end.
+
+gossip1(Src, Message, State) ->
+  NodeId = State#state.node_id,
+  Topology = State#state.topology,
+  #{NodeId := Neighbours} = Topology,
+  [{Dest, Message} || Dest <- Neighbours, Dest =/= Src].
 
 gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
@@ -167,19 +182,19 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-broadcast(Dest, Message, #state{node_id=Src, data=Data} = _State) ->
+broadcast(Dest, Message, #state{node_id=Src} = _State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Msg = broadcast_msg(MsgId, Src, Dest, Message, Data),
+  %% NewState = State#{messages => [{Src, Dest, Message}|Messages]},
+  Msg = broadcast_msg(MsgId, Src, Dest, Message),
   server_rpc ! {rpc, Msg, MsgId, 1000}.
 
-broadcast_msg(MsgId, Src, Dest, Message, Data) ->
+broadcast_msg(MsgId, Src, Dest, Message) ->
   #{<<"dest">> => Dest, 
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
       <<"msg_id">>  => MsgId,
-      <<"message">> => Message,
-      <<"data">>    => Data}}.
+      <<"message">> => Message}}.
 
 handle_rpc(State) ->
   receive
