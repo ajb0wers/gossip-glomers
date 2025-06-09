@@ -69,32 +69,28 @@ handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   }, #state{node_id=NodeId});
 
 
-handle(~"broadcast" = Tag, {Src, Dest, Body}, State) ->
-  #{<<"type">>    := Tag,
-    <<"msg_id">>  := MsgId,
-    <<"message">> := Message} = Body,
-   
-  NewState = case Message of
-    Message when is_list(Message) -> State;
-    _ ->
-      case lists:member(Message, State#state.data) of
-        true ->
-          State;
-        _ -> 
-          Data = [Message|State#state.data],
-          Messages = State#state.messages,
-          List = gossip1(Src, Message, State),
-          NewState0 = State#state{data=Data, messages=List++Messages},
-          gossip(Src, Message, NewState0),
-          NewState0
-      end
-  end,
+handle(~"broadcast", {Src, Dest, Body}, State) ->
+  #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
+  {ok, NewState} = handle_broadcast({Src, Dest, MsgId, Message}, State),
+
+  %% case lists:member(Message, State#state.data) of
+  %%   true ->
+  %%     State;
+  %%   _ -> 
+  %%     Data = [Message|State#state.data],
+  %%     Messages = State#state.messages,
+  %%     List = gossip1(Src, Message, State),
+  %%     NewState0 = State#state{data=Data, messages=List++Messages},
+  %%     gossip(Src, Message, NewState0),
+  %%     NewState0
+  %% end,
 
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
   }, NewState);
+
 
 handle(~"read" = Tag, {Src, Dest, Body}, State) ->
   #{<<"type">> := Tag, <<"msg_id">> := MsgId} = Body,
@@ -153,22 +149,42 @@ handle_info(broadcast, #state{node_id=Src,messages=Messages} = State) ->
       {ok, State#state{messages=[]}}
   end.
 
+handle_broadcast({Src, Dest, MsgId, List}, State) when is_list(List) ->
+  lists:foldl(fun (Message, {ok, StateIn}) ->
+    {ok, _} = handle_broadcast({MsgId, Src, Dest, Message}, StateIn)
+  end, {ok, State}, List);
+
+handle_broadcast({Src, _Dest, _MsgId, Message}, State) ->
+  NewState = case lists:member(Message, State#state.data) of
+    true ->
+      State;
+    _ -> 
+      Data = [Message|State#state.data],
+      Messages = State#state.messages,
+      List = gossip1(Src, Message, State),
+      NewState0 = State#state{data=Data, messages=List++Messages},
+      %% gossip(Src, Message, NewState0),
+      NewState0
+  end,
+  {ok, NewState}.
+
+
 gossip1(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
   #{NodeId := Neighbours} = Topology,
   [{Dest, Message} || Dest <- Neighbours, Dest =/= Src].
 
-gossip(Src, Message, State) ->
-  NodeId = State#state.node_id,
-  Topology = State#state.topology,
-  maybe 
-		#{NodeId := Neighbours} ?= Topology,
-		lists:foreach(fun
-			(N) when N =:= Src -> ok;
-			(N) -> broadcast(N, Message, State)
-		end, Neighbours)
-  end.
+%% gossip(Src, Message, State) ->
+%%   NodeId = State#state.node_id,
+%%   Topology = State#state.topology,
+%%   maybe 
+%% 		#{NodeId := Neighbours} ?= Topology,
+%% 		lists:foreach(fun
+%% 			(N) when N =:= Src -> ok;
+%% 			(N) -> broadcast(N, Message, State)
+%% 		end, Neighbours)
+%%   end.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
@@ -182,11 +198,10 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-broadcast(Dest, Message, #state{node_id=Src} = _State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
-  %% NewState = State#{messages => [{Src, Dest, Message}|Messages]},
-  Msg = broadcast_msg(MsgId, Src, Dest, Message),
-  server_rpc ! {rpc, Msg, MsgId, 1000}.
+%% broadcast(Dest, Message, #state{node_id=Src} = _State) ->
+%%   MsgId = erlang:unique_integer([monotonic, positive]), 
+%%   Msg = broadcast_msg(MsgId, Src, Dest, Message),
+%%   server_rpc ! {rpc, Msg, MsgId, 1000}.
 
 broadcast_msg(MsgId, Src, Dest, Message) ->
   #{<<"dest">> => Dest, 
