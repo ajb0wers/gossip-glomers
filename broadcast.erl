@@ -122,25 +122,25 @@ handle(~"broadcast_ok", {_, _, Body}, State) ->
 
 handle(_Tag, _Msg, State) -> {ok, State}.
 
-handle_info({reply, Reply}, State) ->
-	io:format(?FORMAT, [json:encode(Reply)]),
-	{ok, State};
+%% handle_info({reply, Reply}, State) ->
+%% 	io:format(?FORMAT, [json:encode(Reply)]),
+%% 	{ok, State};
+%% 
+%% handle_info({rpc, Msg}, State) ->
+%% 	io:format(?FORMAT, [json:encode(Msg)]),
+%% 	{ok, State};
+%% 
+%% handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
+%% 	io:format(?FORMAT, [json:encode(Msg)]),
+%%   {ok, TRef} = timer:send_after(Time, {info, Info}),
+%%   NewState = State#state{timers = Timers#{Id => TRef}},
+%% 	{ok, NewState};
 
-handle_info({rpc, Msg}, State) ->
-	io:format(?FORMAT, [json:encode(Msg)]),
-	{ok, State};
-
-handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
-	io:format(?FORMAT, [json:encode(Msg)]),
-  {ok, TRef} = timer:send_after(Time, {info, Info}),
-  NewState = State#state{timers = Timers#{Id => TRef}},
-	{ok, NewState};
-
-handle_info(broadcast, #state{node_id=Src,messages=Messages} = State) ->
-  case Messages of
+handle_info(broadcast, #state{node_id=Src,messages=Msgs} = State) ->
+  case Msgs of
     [] -> {ok, State};
     _ ->
-      Map = maps:groups_from_list(fun ({Dest, _}) -> Dest end, Messages),
+      Map = maps:groups_from_list(fun ({Dest, _}) -> Dest end, Msgs),
       maps:foreach(fun (Dest, Values) ->
         MsgId = erlang:unique_integer([monotonic, positive]), 
         Msg = broadcast_msg(MsgId, Src, Dest, [N || {_,N} <- Values]),
