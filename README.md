@@ -10,17 +10,13 @@
 ./maelstrom test -w echo --bin ../echo.erl --node-count 5 --time-limit 10
 
 # Unique ID Generation
-./maelstrom test -w unique-ids.erl --bin ../uniqueids \
+./maelstrom test -w unique-ids.erl --bin ../uniqueids.erl \
   --time-limit 30 --rate 1000 --node-count 3 \
   --availability total --nemesis partition
 
-# Single-Node Broadcast
-./maelstrom test -w broadcast.erl --bin ../broadcast \
-  --node-count 1 --time-limit 20 --rate 10
-
 # Multi-Node Broadcast
-./maelstrom test -w broadcast.erl --bin ../broadcast \
-  --node-count 5 --time-limit 20 --rate 10
+./maelstrom test -w broadcast.erl --bin ../broadcast.erl \
+  --node-count 25 --time-limit 20 --rate 100 --latency 100
 
 # Running `maelstrom` in an Erlang based container:
 podman build -t ajb0wers/gossip-glomers .
