@@ -7,9 +7,10 @@ cat <<EOF
 {"src":"c1","dest":"n1","body":{"msg_id":5,"type":"broadcast","message":1}}
 {"src":"c1","dest":"n1","body":{"msg_id":6,"type":"read"}}
 EOF
-sleep 2s
-cat <<EOF
+sleep 1s; cat <<EOF
 {"src":"n2","dest":"n1","body":{"in_reply_to":4,"type":"broadcast_ok"}}
+EOF
+sleep 1s; cat <<EOF
 {"src":"n3","dest":"n1","body":{"in_reply_to":5,"type":"broadcast_ok"}}
 EOF
 cat -
