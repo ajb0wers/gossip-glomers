@@ -7,18 +7,18 @@
 
 ```Bash
 # Echo
-./maelstrom test -w echo --bin ../echo.erl --node-count 5 --time-limit 10
+./maelstrom test -w echo --bin ../1/echo.erl --node-count 5 --time-limit 10
 
 # Unique ID Generation
-./maelstrom test -w unique-ids.erl --bin ../uniqueids.erl \
+./maelstrom test -w unique-ids.erl --bin ../1/uniqueids.erl \
   --time-limit 30 --rate 1000 --node-count 3 \
   --availability total --nemesis partition
 
 # Multi-Node Broadcast
-./maelstrom test -w broadcast.erl --bin ../broadcast.erl \
+./maelstrom test -w broadcast.erl --bin ../3e/broadcast.erl \
   --node-count 25 --time-limit 20 --rate 100 --latency 100
 
-# Running `maelstrom` in an Erlang based container:
+# Running `maelstrom` in an Erlang container:
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 ./maelstrom test -w echo --bin /app/bin/echo.erl --node-count 5 --time-limit 10
