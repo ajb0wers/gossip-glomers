@@ -6,9 +6,9 @@
 
 -record(state, {
 	node_id=null,
-	data=[],
-  messages=[],
+	store=[],
 	topology=#{},
+	callbacks=#{},
   timers=#{}}).
 
 main([]) -> 
@@ -32,14 +32,13 @@ stop() ->
 init() ->
 	register(server, self()),
 	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
-  timer:send_interval(100, server, {info, broadcast}),
 	server(#state{}).
 
 server(State) ->
 	receive
 		{line, Line} ->
       Msg = json:decode(Line),
-			{ok, NewState} = handle_line(Msg, State),
+			{ok, NewState} = handle(Msg, State),
 			server(NewState);
 		{info, Msg} ->
 			{ok, NewState} = handle_info(Msg, State),
@@ -52,10 +51,15 @@ server(State) ->
 	end.
 
 
-handle_line(Msg, State) ->
-  #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
+handle(Msg, State) ->
+  #{<<"src">>  := Src,
+    <<"dest">> := Dest,
+    <<"body">> := Body} = Msg,
+
   #{<<"type">> := Tag} = Body,
+
   handle(Tag, {Src, Dest, Body}, State).
+
 
 handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
@@ -69,27 +73,26 @@ handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   }, #state{node_id=NodeId});
 
 
-handle(~"broadcast", {Src, Dest, Body}, State) ->
-  #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
-  {ok, NewState} = handle_broadcast({Src, Dest, MsgId, Message}, State),
-
-  %% case lists:member(Message, State#state.data) of
-  %%   true ->
-  %%     State;
-  %%   _ -> 
-  %%     Data = [Message|State#state.data],
-  %%     Messages = State#state.messages,
-  %%     List = gossip1(Src, Message, State),
-  %%     NewState0 = State#state{data=Data, messages=List++Messages},
-  %%     gossip(Src, Message, NewState0),
-  %%     NewState0
-  %% end,
+handle(~"broadcast" = Tag, {Src, Dest, Body}, State) ->
+  #{<<"type">>    := Tag,
+    <<"msg_id">>  := MsgId,
+    <<"message">> := Message} = Body,
 
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId
-  }, NewState);
+  }, State),
+
+  NewState = case lists:member(Message, State#state.store) of
+    true -> State;
+    _ -> 
+      gossip(Src, Message, State),
+      Store = [Message|State#state.store],
+      State#state{store=Store}
+  end,
+
+	{ok, NewState};
 
 
 handle(~"read" = Tag, {Src, Dest, Body}, State) ->
@@ -99,7 +102,7 @@ handle(~"read" = Tag, {Src, Dest, Body}, State) ->
     <<"type">>        => <<"read_ok">>,
     <<"msg_id">>      => erlang:unique_integer([monotonic, positive]), 
     <<"in_reply_to">> => MsgId,
-    <<"messages">>    => State#state.data
+    <<"messages">>    => State#state.store
   }, State);
 
 handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
@@ -122,69 +125,33 @@ handle(~"broadcast_ok", {_, _, Body}, State) ->
 
 handle(_Tag, _Msg, State) -> {ok, State}.
 
-%% handle_info({reply, Reply}, State) ->
-%% 	io:format(?FORMAT, [json:encode(Reply)]),
-%% 	{ok, State};
-%% 
-%% handle_info({rpc, Msg}, State) ->
-%% 	io:format(?FORMAT, [json:encode(Msg)]),
-%% 	{ok, State};
-%% 
-%% handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
-%% 	io:format(?FORMAT, [json:encode(Msg)]),
-%%   {ok, TRef} = timer:send_after(Time, {info, Info}),
-%%   NewState = State#state{timers = Timers#{Id => TRef}},
-%% 	{ok, NewState};
+handle_info({reply, Reply}, State) ->
+	io:format(?FORMAT, [json:encode(Reply)]),
+	{ok, State};
 
-handle_info(broadcast, #state{node_id=Src,messages=Msgs} = State) ->
-  case Msgs of
-    [] -> {ok, State};
-    _ ->
-      Map = maps:groups_from_list(fun ({Dest, _}) -> Dest end, Msgs),
-      maps:foreach(fun (Dest, Values) ->
-        MsgId = erlang:unique_integer([monotonic, positive]), 
-        Msg = broadcast_msg(MsgId, Src, Dest, [N || {_,N} <- Values]),
-        server_rpc ! {rpc, Msg, MsgId, 1000}
-      end, Map),
-      {ok, State#state{messages=[]}}
-  end.
+handle_info({rpc, Msg}, State) ->
+	io:format(?FORMAT, [json:encode(Msg)]),
+	{ok, State};
 
-handle_broadcast({Src, Dest, MsgId, List}, State) when is_list(List) ->
-  lists:foldl(fun (Message, {ok, StateIn}) ->
-    {ok, _} = handle_broadcast({MsgId, Src, Dest, Message}, StateIn)
-  end, {ok, State}, List);
-
-handle_broadcast({Src, _Dest, _MsgId, Message}, State) ->
-  NewState = case lists:member(Message, State#state.data) of
-    true ->
-      State;
-    _ -> 
-      Data = [Message|State#state.data],
-      Messages = State#state.messages,
-      List = gossip1(Src, Message, State),
-      NewState0 = State#state{data=Data, messages=List++Messages},
-      %% gossip(Src, Message, NewState0),
-      NewState0
-  end,
-  {ok, NewState}.
+handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
+	io:format(?FORMAT, [json:encode(Msg)]),
+  {ok, TRef} = timer:send_after(Time, {info, Info}),
+  NewState = State#state{timers = Timers#{Id => TRef}},
+	{ok, NewState}.
 
 
-gossip1(Src, Message, State) ->
+gossip(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
-  #{NodeId := Neighbours} = Topology,
-  [{Dest, Message} || Dest <- Neighbours, Dest =/= Src].
-
-%% gossip(Src, Message, State) ->
-%%   NodeId = State#state.node_id,
-%%   Topology = State#state.topology,
-%%   maybe 
-%% 		#{NodeId := Neighbours} ?= Topology,
-%% 		lists:foreach(fun
-%% 			(N) when N =:= Src -> ok;
-%% 			(N) -> broadcast(N, Message, State)
-%% 		end, Neighbours)
-%%   end.
+  Data = State#state.store,
+  maybe 
+		#{NodeId := Neighbours} ?= Topology,
+		false ?= lists:any(fun(X) -> X == Message end, Data),
+		lists:foreach(fun
+			(N) when N =:= Src -> ok;
+			(N) -> broadcast(N, Message, State)
+		end, Neighbours)
+  end.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
@@ -198,10 +165,10 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-%% broadcast(Dest, Message, #state{node_id=Src} = _State) ->
-%%   MsgId = erlang:unique_integer([monotonic, positive]), 
-%%   Msg = broadcast_msg(MsgId, Src, Dest, Message),
-%%   server_rpc ! {rpc, Msg, MsgId, 1000}.
+broadcast(Dest, Message, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  Msg = broadcast_msg(MsgId, State#state.node_id, Dest, Message),
+  server_rpc ! {rpc, Msg, MsgId, 1000}.
 
 broadcast_msg(MsgId, Src, Dest, Message) ->
   #{<<"dest">> => Dest, 

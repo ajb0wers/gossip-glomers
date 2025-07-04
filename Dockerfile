@@ -14,7 +14,7 @@ RUN wget --no-verbose \
     rm maelstrom.tar.bz2
 
 RUN mkdir bin
-COPY echo.erl uniqueids.erl broadcast.erl bin/ 
+COPY 1/echo.erl 2/uniqueids.erl 3e/broadcast.erl bin/ 
 
 WORKDIR /app/maelstrom
 

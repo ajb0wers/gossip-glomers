@@ -3,9 +3,10 @@
 all: check-escript
 
 check-escript:
-	escript -s echo.erl
-	escript -s uniqueids.erl
-	escript -s broadcast.erl
+	escript -s 1/echo.erl
+	escript -s 2/uniqueids.erl
+	escript -s 3/broadcast.erl
+	escript -s 3e/broadcast.erl
 
 maelstrom: check-escript
 	podman build -t ajb0wers/gossip-glomers .
