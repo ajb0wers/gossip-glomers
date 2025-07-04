@@ -10,12 +10,12 @@
 ./maelstrom test -w echo --bin ../1/echo.erl --node-count 5 --time-limit 10
 
 # Unique ID Generation
-./maelstrom test -w unique-ids.erl --bin ../1/uniqueids.erl \
+./maelstrom test -w unique-ids --bin ../2/uniqueids.erl \
   --time-limit 30 --rate 1000 --node-count 3 \
   --availability total --nemesis partition
 
 # Multi-Node Broadcast
-./maelstrom test -w broadcast.erl --bin ../3e/broadcast.erl \
+./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
   --node-count 25 --time-limit 20 --rate 100 --latency 100
 
 # Running `maelstrom` in an Erlang container:
