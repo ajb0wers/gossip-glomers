@@ -19,17 +19,17 @@ maelstrom-echo:
 maelstrom-unique-ids:
 	@cd maelstrom; \
 	./maelstrom test -w unique-ids --bin ../2/uniqueids.erl \
-		 --time-limit 30 --rate 1000 --node-count 3 \
-		 --availability total --nemesis partition
+		--time-limit 30 --rate 1000 --node-count 3 \
+		--availability total --nemesis partition
  
 maelstrom-broadcast:
 	@cd maelstrom; \
 	./maelstrom test -w broadcast --bin ../3/broadcast.erl \
-     --node-count 25 --time-limit 20 --rate 100 --latency 100 \
-		 --topology tree4
+    --node-count 25 --time-limit 20 --rate 100 --latency 100 \
+		--topology tree4
 
 maelstrom-broadcast-3e:
 	@cd maelstrom; \
 	./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
-     --node-count 25 --time-limit 20 --rate 100 --latency 100;
+	  --node-count 25 --time-limit 20 --rate 100 --latency 100;
 
