@@ -19,7 +19,7 @@ intro:
 evaluation: intro check echo unique-ids broadcast broadcast-3e
 
 echo:
-	@echo "Challenge #1: Echo"
+	@echo 'Challenge #1: Echo'
 	@cd maelstrom; \
 	./maelstrom test -w echo --bin ../1/echo.erl --node-count 5 --time-limit 10
 
