@@ -3,20 +3,17 @@
 all: check
 
 check:
-	@escript -s 1/echo.erl
-	@escript -s 2/uniqueids.erl
-	@escript -s 3/broadcast.erl
-	@escript -s 3e/broadcast.erl
+	@echo 'Vibe checking ...'
+	escript -s 1/echo.erl
+	escript -s 2/uniqueids.erl
+	escript -s 3/broadcast.erl
+	escript -s 3e/broadcast.erl
 
 maelstrom: check
 	podman build -t ajb0wers/gossip-glomers .
 	podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 
-
-intro:
-	@echo 'A series of distributed systems challenges brought to you by Fly.io.'
-
-evaluation: intro check echo unique-ids broadcast broadcast-3e
+evaluation: check echo unique-ids broadcast broadcast-3e
 
 echo:
 	@echo 'Challenge #1: Echo'
