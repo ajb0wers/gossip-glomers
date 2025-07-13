@@ -3,7 +3,6 @@
 all: check
 
 check:
-	@echo 'Vibe checking ...'
 	escript -s 1/echo.erl
 	escript -s 2/uniqueids.erl
 	escript -s 3/broadcast.erl
@@ -38,5 +37,5 @@ broadcast-3e:
 	@echo 'Challenge #3e: Efficient Broadcast, Part II'
 	@cd maelstrom; \
 	./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
-	  --node-count 25 --time-limit 20 --rate 100 --latency 100;
+	  --node-count 25 --time-limit 20 --rate 100 --latency 100
 
