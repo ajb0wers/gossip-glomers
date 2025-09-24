@@ -12,8 +12,6 @@ maelstrom: check
 	podman build -t ajb0wers/gossip-glomers .
 	podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 
-evaluation: check echo unique-ids broadcast broadcast-3e
-
 echo:
 	@echo 'Challenge #1: Echo'
 	@cd maelstrom; \
