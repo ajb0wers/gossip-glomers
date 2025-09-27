@@ -122,20 +122,6 @@ handle(~"broadcast_ok", {_, _, Body}, State) ->
 
 handle(_Tag, _Msg, State) -> {ok, State}.
 
-%% handle_info({reply, Reply}, State) ->
-%% 	io:format(?FORMAT, [json:encode(Reply)]),
-%% 	{ok, State};
-%% 
-%% handle_info({rpc, Msg}, State) ->
-%% 	io:format(?FORMAT, [json:encode(Msg)]),
-%% 	{ok, State};
-%% 
-%% handle_info({rpc, Msg, Id, Time} = Info, #state{timers=Timers} = State) ->
-%% 	io:format(?FORMAT, [json:encode(Msg)]),
-%%   {ok, TRef} = timer:send_after(Time, {info, Info}),
-%%   NewState = State#state{timers = Timers#{Id => TRef}},
-%% 	{ok, NewState};
-
 handle_info(broadcast, #state{node_id=Src,messages=Msgs} = State) ->
   case Msgs of
     [] -> {ok, State};
@@ -163,28 +149,15 @@ handle_broadcast({Src, _Dest, _MsgId, Message}, State) ->
       Messages = State#state.messages,
       List = gossip1(Src, Message, State),
       NewState0 = State#state{data=Data, messages=List++Messages},
-      %% gossip(Src, Message, NewState0),
       NewState0
   end,
   {ok, NewState}.
-
 
 gossip1(Src, Message, State) ->
   NodeId = State#state.node_id,
   Topology = State#state.topology,
   #{NodeId := Neighbours} = Topology,
   [{Dest, Message} || Dest <- Neighbours, Dest =/= Src].
-
-%% gossip(Src, Message, State) ->
-%%   NodeId = State#state.node_id,
-%%   Topology = State#state.topology,
-%%   maybe 
-%% 		#{NodeId := Neighbours} ?= Topology,
-%% 		lists:foreach(fun
-%% 			(N) when N =:= Src -> ok;
-%% 			(N) -> broadcast(N, Message, State)
-%% 		end, Neighbours)
-%%   end.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
