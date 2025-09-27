@@ -1,6 +1,6 @@
 # Gossip Glomers
 
-> Everything looks good! ヽ(‘ー\`)ノ
+> Everything looks good! ``ヽ(‘ー`)ノ``
 
 
 ## Evaluation

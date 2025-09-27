@@ -7,8 +7,9 @@ check:
 	escript -s 2/uniqueids.erl
 	escript -s 3/broadcast.erl
 	escript -s 3e/broadcast.erl
+	escript -s 4/g_set.erl
 
-maelstrom: check
+podman: check
 	podman build -t ajb0wers/gossip-glomers .
 	podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 
@@ -37,3 +38,7 @@ broadcast-3e:
 	./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
 	  --node-count 25 --time-limit 20 --rate 100 --latency 100
 
+g-set:
+	@cd maelstrom; \
+	./maelstrom test -w g-set --bin ../4/g_set.erl \
+	  --node-count 2 --time-limit 10
