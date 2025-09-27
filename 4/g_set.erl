@@ -8,6 +8,7 @@
 
 -record(state, {
 	node_id=null,
+	node_ids=[],
 	data=sets:new(),
   messages=[],
 	topology=#{},
@@ -62,12 +63,12 @@ handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   #{<<"type">>     := Tag,
     <<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
-    <<"node_ids">> := _NodeIds} = Body,
+    <<"node_ids">> := NodeIds} = Body,
 
   reply(Src, Dest, #{
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
-  }, #state{node_id=NodeId});
+  }, #state{node_id=NodeId, node_ids=NodeIds});
 
 
 handle(~"add", {Src, Dest, Body}, State) ->
@@ -102,11 +103,14 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(~"broadcast", {_Src, _Dest, Body}, State) ->
-  #{<<"message">> := Message} = Body,
-  %% TODO: reply broadcast_ok
-  handle_broadcast(Message, State);
-
+handle(~"broadcast", {Src, Dest, Body}, State) ->
+  #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
+  {ok, NewState} = handle_broadcast(Message, State),
+  %% TODO: Optional broadcast_ok?
+  reply(Src, Dest, #{
+    <<"type">> => <<"broadcast_ok">>,
+    <<"in_reply_to">> => MsgId
+  }, NewState);
 
 handle(~"broadcast_ok", {_, _, _Body}, State) ->
   %% #{~"in_reply_to" := MsgId} = Body,
@@ -126,16 +130,16 @@ handle_broadcast(Message, State) ->
   {ok, State#state{data=Data}}.
 
 replicate(#state{node_id=Src} = State) ->
-  Topology = State#state.topology,
+  NodeIds = State#state.node_ids,
   Data = sets:to_list(State#state.data),
-  #{Src := Neighbours} = Topology,
 
   lists:foreach(fun
     (Dest) when Dest =/= Src ->
-      Msg = broadcast_msg(Src, Dest, Data),
+      MsgId =  erlang:unique_integer([monotonic, positive]), 
+      Msg   = broadcast_msg(MsgId, Src, Dest, Data),
       server_rpc ! {rpc, Msg};
     (_Src) -> ok
-  end, Neighbours),
+  end, NodeIds),
 
   {ok, State}.
 
@@ -157,25 +161,13 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-%% broadcast(Dest, Message, #state{node_id=Src} = _State) ->
-%%   MsgId = erlang:unique_integer([monotonic, positive]), 
-%%   Msg = broadcast_msg(MsgId, Src, Dest, Message),
-%%   server_rpc ! {rpc, Msg, MsgId, 1000}.
-
-broadcast_msg(Src, Dest, Message) ->
+broadcast_msg(MsgId, Src, Dest, Message) ->
   #{<<"dest">> => Dest, 
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
+      <<"msg_id">>  => MsgId,
       <<"message">> => Message}}.
-
-%% broadcast_msg(MsgId, Src, Dest, Message) ->
-%%   #{<<"dest">> => Dest, 
-%%     <<"src">>  => Src,
-%%     <<"body">> => #{
-%%       <<"type">>    => <<"broadcast">>,
-%%       <<"msg_id">>  => MsgId,
-%%       <<"message">> => Message}}.
  
 handle_rpc(State) ->
   receive
