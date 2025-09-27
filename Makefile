@@ -41,4 +41,4 @@ broadcast-3e:
 g-set:
 	@cd maelstrom; \
 	./maelstrom test -w g-set --bin ../4/g_set.erl \
-	  --node-count 2 --time-limit 10
+    --time-limit 30 --rate 10 --nemesis partition
