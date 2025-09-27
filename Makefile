@@ -29,16 +29,16 @@ broadcast:
 	@echo 'Challenge #3d: Efficient Broadcast, Part I'
 	@cd maelstrom; \
 	./maelstrom test -w broadcast --bin ../3/broadcast.erl \
-    --node-count 25 --time-limit 20 --rate 100 --latency 100 \
+		--node-count 25 --time-limit 20 --rate 100 --latency 100 \
 		--topology tree4
 
 broadcast-3e:
 	@echo 'Challenge #3e: Efficient Broadcast, Part II'
 	@cd maelstrom; \
 	./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
-	  --node-count 25 --time-limit 20 --rate 100 --latency 100
+		--node-count 25 --time-limit 20 --rate 100 --latency 100
 
 g-set:
 	@cd maelstrom; \
 	./maelstrom test -w g-set --bin ../4/g_set.erl \
-    --time-limit 30 --rate 10 --nemesis partition
+		--time-limit 30 --rate 10 --nemesis partition
