@@ -41,10 +41,10 @@ broadcast-3e:
 
 g-set:
 	@cd maelstrom; \
-	./maelstrom test -w g-set --bin ../4/g_set.erl \
-		--time-limit 20 --rate 10
+	./maelstrom test -w g-set --bin ../4/g_set.erl --time-limit 20 --rate 10
 
 g-counter:
+	@echo 'Challenge #4: Grow-Only Counter'
 	@cd maelstrom; \
 	./maelstrom test -w g-counter --bin ../4/counter.erl \
-		--time-limit 20 --rate 10
+		--node-count 3 --rate 100 --time-limit 20 --nemesis partition
