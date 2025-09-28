@@ -103,14 +103,15 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle(~"broadcast", {Src, Dest, Body}, State) ->
-  #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
-  {ok, NewState} = handle_broadcast(Message, State),
-  %% TODO: Optional broadcast_ok?
-  reply(Src, Dest, #{
-    <<"type">> => <<"broadcast_ok">>,
-    <<"in_reply_to">> => MsgId
-  }, NewState);
+handle(~"broadcast", {_Src, _Dest, Body}, State) ->
+  #{<<"message">> := Message} = Body,
+  handle_broadcast(Message, State);
+  %% #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
+  %% {ok, NewState} = handle_broadcast(Message, State),
+  %% reply(Src, Dest, #{
+  %%   <<"type">> => <<"broadcast_ok">>,
+  %%   <<"in_reply_to">> => MsgId
+  %% }, NewState);
 
 handle(~"broadcast_ok", {_, _, _Body}, State) ->
   %% #{~"in_reply_to" := MsgId} = Body,
@@ -136,18 +137,11 @@ replicate(#state{node_id=Src} = State) ->
   lists:foreach(fun
     (Dest) when Dest =/= Src ->
       MsgId =  erlang:unique_integer([monotonic, positive]), 
-      Msg   = broadcast_msg(MsgId, Src, Dest, Data),
-      server_rpc ! {rpc, Msg};
+      broadcast_msg(MsgId, Src, Dest, Data);
     (_Src) -> ok
   end, NodeIds),
 
   {ok, State}.
-
-%% gossip1(Src, Message, State) ->
-%%   NodeId = State#state.node_id,
-%%   Topology = State#state.topology,
-%%   #{NodeId := Neighbours} = Topology,
-%%   [{Dest, Message} || Dest <- Neighbours, Dest =/= Src].
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
@@ -156,18 +150,19 @@ reply(Dest, Body, State) ->
   Reply = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.node_id,
-    <<"body">> => Body
-  },
+    <<"body">> => Body},
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
 broadcast_msg(MsgId, Src, Dest, Message) ->
-  #{<<"dest">> => Dest, 
+  Msg = #{
+    <<"dest">> => Dest, 
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
       <<"msg_id">>  => MsgId,
-      <<"message">> => Message}}.
+      <<"message">> => Message}},
+  server_rpc ! {rpc, Msg}.
  
 handle_rpc(State) ->
   receive
