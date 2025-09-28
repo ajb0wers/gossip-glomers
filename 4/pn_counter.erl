@@ -138,7 +138,6 @@ replicate(#state{node_id=Src} = State) ->
 
   lists:foreach(fun
     (Dest) when Dest =/= Src ->
-      %% MsgId =  erlang:unique_integer([monotonic, positive]), 
       broadcast_msg(Src, Dest, Message);
     (_Src) -> ok
   end, NodeIds).
@@ -160,7 +159,6 @@ broadcast_msg(Src, Dest, Message) ->
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
-      %% <<"msg_id">>  => MsgId,
       <<"message">> => Message}},
   server_rpc ! {rpc, Msg}.
  
