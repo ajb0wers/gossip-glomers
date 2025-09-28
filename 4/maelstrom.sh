@@ -9,7 +9,4 @@ printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":8,"type":"read"}}'
 sleep 1s;
 printf "%s\n" '{"src":"n2","dest":"n1","body":{"msg_id":9,"type":"broadcast","message":[1,2,3,4,5,6]}}'
 printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":10,"type":"read"}}'
-# printf "%s\n" '{"src":"n2","dest":"n1","body":{"in_reply_to":6,"type":"broadcast_ok"}}'
-# sleep 1s;
-# printf "%s\n" '{"src":"n3","dest":"n1","body":{"in_reply_to":7,"type":"broadcast_ok"}}'
 cat -
