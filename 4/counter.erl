@@ -79,7 +79,6 @@ handle_msg(~"add", {Src, Dest, Body}, State) ->
   NodeId = State#state.node_id,
   Data = State#state.data,
   #{NodeId := N} = Data,
-
   NewState = State#state{data=Data#{NodeId := N+Delta}},
 
   reply(Src, Dest, #{
