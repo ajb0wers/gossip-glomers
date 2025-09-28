@@ -8,6 +8,7 @@ check:
 	escript -s 3/broadcast.erl
 	escript -s 3e/broadcast.erl
 	escript -s 4/g_set.erl
+	escript -s 4/counter.erl
 
 podman: check
 	podman build -t ajb0wers/gossip-glomers .
@@ -41,4 +42,9 @@ broadcast-3e:
 g-set:
 	@cd maelstrom; \
 	./maelstrom test -w g-set --bin ../4/g_set.erl \
+		--time-limit 20 --rate 10
+
+g-counter:
+	@cd maelstrom; \
+	./maelstrom test -w g-counter --bin ../4/counter.erl \
 		--time-limit 20 --rate 10
