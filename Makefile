@@ -9,6 +9,7 @@ check:
 	escript -s 3e/broadcast.erl
 	escript -s 4/g_set.erl
 	escript -s 4/counter.erl
+	escript -s 4/pn_counter.erl
 
 podman: check
 	podman build -t ajb0wers/gossip-glomers .
@@ -39,12 +40,17 @@ broadcast-3e:
 	./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
 		--node-count 25 --time-limit 20 --rate 100 --latency 100
 
-g-set:
-	@cd maelstrom; \
-	./maelstrom test -w g-set --bin ../4/g_set.erl --time-limit 20 --rate 10
-
 g-counter:
 	@echo 'Challenge #4: Grow-Only Counter'
 	@cd maelstrom; \
 	./maelstrom test -w g-counter --bin ../4/counter.erl \
 		--node-count 3 --rate 100 --time-limit 20 --nemesis partition
+
+g-set:
+	@cd maelstrom; \
+	./maelstrom test -w g-set --bin ../4/g_set.erl --time-limit 20 --rate 10
+
+pn-counter:
+	@cd maelstrom; \
+	./maelstrom test -w pn-counter --bin ../4/pn_counter.erl \
+		--time-limit 20 --rate 10 
