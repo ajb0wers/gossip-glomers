@@ -20,8 +20,8 @@ make broadcast
 # Challenge #3e: Efficient Broadcast, Part II
 make broadcast-3e
 
-# Challenge #4: Grow-Only Counter, etc.
-make broadcast-3e
+# Challenge #4: Grow-Only Counter
+make g-counter
 ```
 
 ## See also
