@@ -28,7 +28,6 @@ podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 ```
 
-
 ## See also
 
 - [Gossip Glomers][1] - Fly\.io
