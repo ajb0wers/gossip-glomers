@@ -5,23 +5,23 @@
 
 ## Evaluation
 
+See `Makefile`.
+
 ```Bash
-# Echo
-./maelstrom test -w echo --bin ../1/echo.erl --node-count 5 --time-limit 10
+# Challenge #1: Echo
+make echo
 
-# Unique ID Generation
-./maelstrom test -w unique-ids --bin ../2/uniqueids.erl \
-  --time-limit 30 --rate 1000 --node-count 3 \
-  --availability total --nemesis partition
+# Challenge #2: Unique ID Generation
+make unique-ids
 
-# Multi-Node Broadcast
-./maelstrom test -w broadcast --bin ../3e/broadcast.erl \
-  --node-count 25 --time-limit 20 --rate 100 --latency 100
+# Challenge #3d: Efficient Broadcast, Part I
+make broadcast
 
-# Running `maelstrom` in an Erlang container:
-podman build -t ajb0wers/gossip-glomers .
-podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
-./maelstrom test -w echo --bin /app/bin/echo.erl --node-count 5 --time-limit 10
+# Challenge #3e: Efficient Broadcast, Part II
+make broadcast-3e
+
+# Challenge #4: Grow-Only Counter, etc.
+make broadcast-3e
 ```
 
 ## See also
