@@ -1,4 +1,4 @@
-.PHONY: all maelstrom check
+.PHONY: all check
 
 all: check
 
@@ -10,10 +10,6 @@ check:
 	escript -s 4/g_set.erl
 	escript -s 4/counter.erl
 	escript -s 4/pn_counter.erl
-
-podman: check
-	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 -w /app/maelstrom ajb0wers/gossip-glomers
 
 echo:
 	@echo 'Challenge #1: Echo'
