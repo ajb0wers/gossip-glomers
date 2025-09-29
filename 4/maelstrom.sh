@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-g-set() {
+g_set() {
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1","n2","n3"]}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":5,"type":"add","element":1}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":6,"type":"add","element":2}}'
@@ -13,7 +13,7 @@ g-set() {
   cat -
 }
 
-g-counter() {
+counter() {
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1","n2","n3"]}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":5,"type":"add","delta":2}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":6,"type":"add","delta":4}}'
@@ -25,7 +25,7 @@ g-counter() {
   cat -
 }
 
-pn-counter() {
+pn_counter() {
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1","n2","n3"]}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":5,"type":"add","delta":1}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":6,"type":"add","delta":2}}'
@@ -35,6 +35,6 @@ pn-counter() {
   printf "%s\n" '{"src":"n2","dest":"n1","body":{"msg_id":9,"type":"broadcast","message":{"inc": {"n1":10, "n2":1}, "dec":{"n1":5}}}}'
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":10,"type":"read"}}'
   cat -
-}
+} 
 
-"$@"
+"$@" | ./"${1}".erl
