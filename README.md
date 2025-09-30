@@ -20,7 +20,7 @@ make broadcast-3e
 # Challenge #4: Grow-Only Counter
 make g-counter
 
-# Container build & run
+# Build & run container using podman, docker, colima etc:
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 ```
