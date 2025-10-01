@@ -5,7 +5,7 @@
 
 ## Evaluation
 
-See `Makefile`.
+See `Makefile`. 
 
 ```Bash
 # Challenge #1: Echo
@@ -14,16 +14,13 @@ make echo
 # Challenge #2: Unique ID Generation
 make unique-ids
 
-# Challenge #3d: Efficient Broadcast, Part I
-make broadcast
-
 # Challenge #3e: Efficient Broadcast, Part II
 make broadcast-3e
 
 # Challenge #4: Grow-Only Counter
 make g-counter
 
-# Container build & run
+# Build & run container using podman, docker, colima etc:
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 ```
