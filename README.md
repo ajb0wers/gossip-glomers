@@ -19,8 +19,11 @@ make broadcast-3e
 
 # Challenge #4: Grow-Only Counter
 make g-counter
+```
 
-# Build & run container using podman, docker, colima etc:
+Build & run containerized erlang & maelstrom:
+
+```Bash
 podman build -t ajb0wers/gossip-glomers .
 podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 ```

@@ -3,7 +3,8 @@ FROM erlang:27
 
 RUN \
 apt-get update \
-&& apt-get -y install --no-install-recommends graphviz gnuplot wget default-jdk
+&& apt-get -y install --no-install-recommends \
+ed graphviz gnuplot wget default-jdk
 
 #Set working directory
 RUN mkdir /app
