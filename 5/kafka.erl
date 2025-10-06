@@ -9,8 +9,7 @@
 -record(state, {
 	node_id  = null :: 'null' | integer(),
 	node_ids = []   :: list(),
-	inc     = #{}   :: map(),
-	dec     = #{}   :: map()
+  log     = #{}   :: map()
 }).
 
 main([]) -> 
@@ -29,7 +28,6 @@ loop() ->
 
 init() ->
 	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
-  timer:send_interval(5000, server, {info, broadcast}),
 	server(#state{}).
 
 server(State) ->
@@ -57,6 +55,7 @@ handle_line(Line, State) ->
   #{<<"type">> := Callback} = Body,
   handle_msg(Callback, {Src, Dest, Body}, State).
 
+
 handle_msg(~"init", {Src, Dest, Body}, _State) ->
   #{<<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
@@ -64,9 +63,7 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
 
   NewState = #state{
     node_id  = NodeId,
-    node_ids = NodeIds,
-    inc     = #{NodeId => 0},
-    dec     = #{NodeId => 0}
+    node_ids = NodeIds
   },
 
   reply(Src, Dest, #{
@@ -75,72 +72,29 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
   }, NewState);
 
 
-handle_msg(~"add", {Src, Dest, Body}, State) ->
-  #{<<"msg_id">> := MsgId, <<"delta">> := Delta} = Body,
-
-  NodeId = State#state.node_id,
-
-  NewState = if 
-    Delta > 0 ->
-      Inc = State#state.inc, #{NodeId := P} = Inc,
-      State#state{inc=Inc#{NodeId := P+Delta}};
-    Delta < 0 ->
-      Dec = State#state.dec, #{NodeId := N} = Dec,
-      State#state{dec=Dec#{NodeId := N+abs(Delta)}};
-    Delta == 0 -> State
-  end,
-
+handle_msg(~"send", {Src, Dest, Body}, State) ->
+  #{<<"key">> := _Key, <<"msg">> := _Msg} = Body,
+  NewState = State,
   reply(Src, Dest, #{
-    <<"type">> => <<"add_ok">>,
-    <<"in_reply_to">> => MsgId
+    <<"type">> => <<"send_ok">>,
+    <<"offset">> => 0
   }, NewState);
 
-
-handle_msg(~"read", {Src, Dest, Body}, State) ->
-  #{<<"msg_id">> := MsgId} = Body,
-  Sum = fun (_, V, Acc0) -> V + Acc0 end,
-  Inc = maps:fold(Sum, 0, State#state.inc),
-  Dec = maps:fold(Sum, 0, State#state.dec),
-  Value = Inc - Dec,
+handle_msg(~"poll", {Src, Dest, Body}, State) ->
+  #{<<"key">> := _Key, <<"msg">> := _Msg } = Body,
+  NewState = State,
   reply(Src, Dest, #{
-    <<"type">>        => <<"read_ok">>,
-    <<"in_reply_to">> => MsgId,
-    <<"value">>       => Value
-  }, State);
+    <<"type">> => <<"poll_ok">>,
+    <<"offsets">> => [#{}] 
+  }, NewState);
 
-handle_msg(~"broadcast", {_Src, _Dest, Body}, State) ->
-  #{<<"message">> := Message} = Body,
-  {Inc, Dec} = merge(Message, State),
-  {ok, State#state{inc=Inc, dec=Dec}};
-
-handle_msg(~"broadcast_ok", {_, _, _Body}, State) ->
-  {ok, State};
+handle_msg(~"commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
+handle_msg(~"list_commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
 
 handle_msg(_Tag, _Msg, State) -> {ok, State}.
 
-handle_info(broadcast, State) ->
-  replicate(State), {ok, State}.
 
-
-merge(Message, #state{inc=IncIn, dec=DecIn}) when is_map(Message) ->
-  Combiner = fun(_K, V1, V2) -> max(V1, V2) end,
-  #{<<"inc">> := Inc0, <<"dec">> := Dec0} = Message, 
-  Inc = maps:merge_with(Combiner, Inc0, IncIn),
-  Dec = maps:merge_with(Combiner, Dec0, DecIn),
-  {Inc, Dec}.
-
-replicate(#state{node_id=Src} = State) ->
-  NodeIds = State#state.node_ids,
-  Message = #{
-     <<"inc">> => State#state.inc,
-     <<"dec">> => State#state.dec
-   },
-
-  lists:foreach(fun
-    (Dest) when Dest =/= Src ->
-      broadcast_msg(Src, Dest, Message);
-    (_Src) -> ok
-  end, NodeIds).
+handle_info(_Msg, _State) -> ok.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
@@ -153,15 +107,6 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-broadcast_msg(Src, Dest, Message) ->
-  Msg = #{
-    <<"dest">> => Dest, 
-    <<"src">>  => Src,
-    <<"body">> => #{
-      <<"type">>    => <<"broadcast">>,
-      <<"message">> => Message}},
-  server_rpc ! {rpc, Msg}.
- 
 handle_rpc(State) ->
   receive
     {rpc, Msg} ->

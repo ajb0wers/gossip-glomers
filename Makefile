@@ -10,6 +10,7 @@ check:
 	escript -s 4/g_set.erl
 	escript -s 4/counter.erl
 	escript -s 4/pn_counter.erl
+	escript -s 5/kafka.erl
 
 echo:
 	@echo 'Challenge #1: Echo'
@@ -50,3 +51,8 @@ pn-counter:
 	@cd maelstrom; \
 	./maelstrom test -w pn-counter --bin ../4/pn_counter.erl \
 		--time-limit 20 --rate 10 
+
+kafka:
+	@cd maelstrom; \
+	./maelstrom test -w kafka --bin ../5/kafka \
+		--node-count 1 --concurrency 2n --time-limit 20 --rate 1000
