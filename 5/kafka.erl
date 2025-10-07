@@ -1,5 +1,5 @@
 #!/usr/bin/env -S escript -c
--module(pn_counter).
+-module(kafka).
 
 -export([init/0, handle_rpc/1]).
 
@@ -9,7 +9,7 @@
 -record(state, {
 	node_id  = null :: 'null' | integer(),
 	node_ids = []   :: list(),
-  log     = #{}   :: map()
+  data     = #{}  :: map() %% Key => {Offset, Commit, [Log]}
 }).
 
 main([]) -> 
@@ -72,21 +72,37 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
   }, NewState);
 
 
-handle_msg(~"send", {Src, Dest, Body}, State) ->
-  #{<<"key">> := _Key, <<"msg">> := _Msg} = Body,
-  NewState = State,
+handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
+  #{<<"key">> := K, <<"msg">> := Msg} = Body,
+
+  {Offset, Commit, Log} = maps:get(K, Data, {0, 0, []}),
+  Offset1 = Offset+1,
+  NewData = Data#{K => {Offset1, Commit, [Msg]++Log}},
+  NewState = State#state{data=NewData},
+
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
-    <<"offset">> => 0
+    <<"offset">> => Offset1
   }, NewState);
 
-handle_msg(~"poll", {Src, Dest, Body}, State) ->
-  #{<<"key">> := _Key, <<"msg">> := _Msg } = Body,
-  NewState = State,
+handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
+  #{<<"offsets">> := Offsets} = Body,
+
+  Queues = maps:fold(fun (K, OffsetIn, AccIn) ->
+    case Data of 
+      #{K := {Offset, _Commit, Log}} ->
+          Queue = [[I, H] ||
+            {I,H} <- lists:enumerate(Offset, -1, Log), I >= OffsetIn],
+          AccIn#{K => Queue};
+      _ -> AccIn
+    end
+  end, #{}, Offsets),
+
+
   reply(Src, Dest, #{
     <<"type">> => <<"poll_ok">>,
-    <<"offsets">> => [#{}] 
-  }, NewState);
+    <<"offsets">> => Queues 
+  }, State);
 
 handle_msg(~"commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
 handle_msg(~"list_commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
