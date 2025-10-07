@@ -104,7 +104,12 @@ handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
     <<"offsets">> => Queues 
   }, State);
 
-handle_msg(~"commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
+handle_msg(~"commit_offsets", {Src, Dest, Body}, State) ->
+  #{<<"offsets">> := _Offsets} = Body,
+  reply(Src, Dest, #{
+    <<"type">> => <<"commit_offsets_ok">>
+  }, State);
+
 handle_msg(~"list_commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
 
 handle_msg(_Tag, _Msg, State) -> {ok, State}.
