@@ -93,7 +93,8 @@ handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
       #{K := {_Offset, Commit, Log}} ->
         Pred = fun({I,_}) -> I >= Start andalso I > Commit end,
         List = lists:takewhile(Pred, Log),
-        AccIn#{K => [[I,H] || {I,H} <- List]};
+        Queue = lists:reverse([[I,H] || {I,H} <- List]),
+        AccIn#{K => Queue};
       _ -> AccIn
     end
   end, #{}, Offsets),
