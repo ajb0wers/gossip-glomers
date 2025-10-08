@@ -9,7 +9,7 @@
 -record(state, {
 	node_id  = null :: 'null' | integer(),
 	node_ids = []   :: list(),
-  data     = #{}  :: map() %% Key => {Offset, Commit, [Log]}
+  data     = #{}  :: map() %% <<Key>> => {Offset, Commit, [{I,H}..]}
 }).
 
 main([]) -> 
@@ -77,7 +77,7 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
 
   {Offset, Commit, Log} = maps:get(K, Data, {0, 0, []}),
   Offset1 = Offset+1,
-  NewData = Data#{K => {Offset1, Commit, [Msg]++Log}},
+  NewData = Data#{K => {Offset1, Commit, [{Offset1,Msg}]++Log}},
   NewState = State#state{data=NewData},
 
   reply(Src, Dest, #{
@@ -88,29 +88,48 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
 handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"offsets">> := Offsets} = Body,
 
-  Queues = maps:fold(fun (K, OffsetIn, AccIn) ->
+  Queues = maps:fold(fun (K, Start, AccIn) ->
     case Data of 
-      #{K := {Offset, _Commit, Log}} ->
-          Queue = [[I, H] ||
-            {I,H} <- lists:enumerate(Offset, -1, Log), I >= OffsetIn],
-          AccIn#{K => Queue};
+      #{K := {_Offset, Commit, Log}} ->
+        Pred = fun({I,_}) -> I >= Start andalso I > Commit end,
+        List = lists:takewhile(Pred, Log),
+        AccIn#{K => [[I,H] || {I,H} <- List]};
       _ -> AccIn
     end
   end, #{}, Offsets),
-
 
   reply(Src, Dest, #{
     <<"type">> => <<"poll_ok">>,
     <<"offsets">> => Queues 
   }, State);
 
-handle_msg(~"commit_offsets", {Src, Dest, Body}, State) ->
-  #{<<"offsets">> := _Offsets} = Body,
+handle_msg(~"commit_offsets", {Src, Dest, Body}, #state{data=Data} = State) ->
+  #{<<"offsets">> := Offsets} = Body,
+
+  NewData = maps:fold(fun (K, End, AccIn) -> 
+    case Data of
+      #{K := {Offset, Commit, Log}} when End > Commit ->
+        AccIn#{K := {Offset, End, Log}};
+      _ -> AccIn
+    end
+  end, Data, Offsets),
+
+  NewState = State#state{data=NewData},
+
   reply(Src, Dest, #{
     <<"type">> => <<"commit_offsets_ok">>
-  }, State);
+  }, NewState);
 
-handle_msg(~"list_commit_offsets", {_Src, _Dest, _Body}, State) -> {ok, State};
+handle_msg(~"list_committed_offsets", {Src, Dest, Body}, State) ->
+  #{<<"keys">> := Ks} = Body,
+
+  Map = maps:with(Ks, State#state.data),
+  Offsets = #{K => Commit || K := {_,Commit,_} <- Map},
+
+  reply(Src, Dest, #{
+    <<"type">> => <<"list_committed_offsets_ok">>,
+    <<"offsets">> => Offsets
+  }, State);
 
 handle_msg(_Tag, _Msg, State) -> {ok, State}.
 

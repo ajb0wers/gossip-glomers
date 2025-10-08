@@ -54,5 +54,6 @@ pn-counter:
 
 kafka:
 	@cd maelstrom; \
-	./maelstrom test -w kafka --bin ../5/kafka \
-		--node-count 1 --concurrency 2n --time-limit 20 --rate 1000
+	./maelstrom test -w kafka --bin ../5/kafka.erl \
+		--node-count 1 --concurrency 2n --time-limit 20 --rate 1000 \
+		--log-net-send --log-net-recv
