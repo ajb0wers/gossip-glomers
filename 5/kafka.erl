@@ -86,24 +86,24 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
+handle_msg(~"poll", {Src, Dest, Body}, #state{data=Logs} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
-  Queues = maps:fold(fun (K, From, AccIn) ->
-    case Data of 
+  Msgs = maps:fold(fun (K, From, AccIn) ->
+    case Logs of 
       #{K := {_Offset, _Commit, Log}} ->
         %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
         Pred = fun({I,_}) -> I >= From end,
         List = lists:takewhile(Pred, Log),
         Queue = lists:reverse([[I,H] || {I,H} <- List]),
         AccIn#{K => Queue};
-      _ -> AccIn
+      _NoMatch -> AccIn
     end
   end, #{}, Offsets),
 
   reply(Src, Dest, #{
     <<"type">> => <<"poll_ok">>,
-    <<"msgs">> => Queues,
+    <<"msgs">> => Msgs,
     <<"in_reply_to">> => MsgId
   }, State);
 
@@ -138,7 +138,6 @@ handle_msg(~"list_committed_offsets", {Src, Dest, Body}, State) ->
   }, State);
 
 handle_msg(_Tag, _Msg, State) -> {ok, State}.
-
 
 handle_info(_Msg, _State) -> ok.
 
