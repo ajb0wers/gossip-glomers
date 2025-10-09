@@ -73,7 +73,7 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
 
 
 handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
-  #{<<"key">> := K, <<"msg">> := Msg} = Body,
+  #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
   {Offset, Commit, Log} = maps:get(K, Data, {0, 0, []}),
   Offset1 = Offset+1,
@@ -82,11 +82,12 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
 
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
-    <<"offset">> => Offset1
+    <<"offset">> => Offset1,
+    <<"in_reply_to">> => MsgId
   }, NewState);
 
 handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
-  #{<<"offsets">> := Offsets} = Body,
+  #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
   Queues = maps:fold(fun (K, Start, AccIn) ->
     case Data of 
@@ -101,11 +102,12 @@ handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
 
   reply(Src, Dest, #{
     <<"type">> => <<"poll_ok">>,
-    <<"offsets">> => Queues 
+    <<"msgs">> => Queues,
+    <<"in_reply_to">> => MsgId
   }, State);
 
 handle_msg(~"commit_offsets", {Src, Dest, Body}, #state{data=Data} = State) ->
-  #{<<"offsets">> := Offsets} = Body,
+  #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
   NewData = maps:fold(fun (K, End, AccIn) -> 
     case Data of
@@ -118,18 +120,20 @@ handle_msg(~"commit_offsets", {Src, Dest, Body}, #state{data=Data} = State) ->
   NewState = State#state{data=NewData},
 
   reply(Src, Dest, #{
-    <<"type">> => <<"commit_offsets_ok">>
+    <<"type">> => <<"commit_offsets_ok">>,
+    <<"in_reply_to">> => MsgId
   }, NewState);
 
 handle_msg(~"list_committed_offsets", {Src, Dest, Body}, State) ->
-  #{<<"keys">> := Ks} = Body,
+  #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
 
   Map = maps:with(Ks, State#state.data),
   Offsets = #{K => Commit || K := {_,Commit,_} <- Map},
 
   reply(Src, Dest, #{
     <<"type">> => <<"list_committed_offsets_ok">>,
-    <<"offsets">> => Offsets
+    <<"offsets">> => Offsets,
+    <<"in_reply_to">> => MsgId
   }, State);
 
 handle_msg(_Tag, _Msg, State) -> {ok, State}.
