@@ -12,6 +12,9 @@ check:
 	escript -s 4/pn_counter.erl
 	escript -s 5/kafka.erl
 
+serve:
+	@cd maelstrom; ./maelstrom serve
+
 echo:
 	@echo 'Challenge #1: Echo'
 	@cd maelstrom; \
@@ -55,5 +58,6 @@ pn-counter:
 kafka:
 	@cd maelstrom; \
 	./maelstrom test -w kafka --bin ../5/kafka.erl \
-		--node-count 1 --concurrency 2n --time-limit 20 --rate 1000 \
+		--node-count 1 --concurrency 2n --time-limit 20 --rate 800 \
 		--log-net-send --log-net-recv
+		#--node-count 1 --concurrency 2n --time-limit 20 --rate 1000 \
