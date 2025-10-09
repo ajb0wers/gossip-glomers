@@ -55,9 +55,8 @@ pn-counter:
 	./maelstrom test -w pn-counter --bin ../4/pn_counter.erl \
 		--time-limit 20 --rate 10 
 
-kafka:
+kafka-5a:
+	@echo 'Challenge #5a: Single-Node Kafka-Style Log'
 	@cd maelstrom; \
 	./maelstrom test -w kafka --bin ../5/kafka.erl \
-		--node-count 1 --concurrency 2n --time-limit 20 --rate 800 \
-		--log-net-send --log-net-recv
-		#--node-count 1 --concurrency 2n --time-limit 20 --rate 1000 \
+		--node-count 1 --concurrency 2n --time-limit 20 --rate 1000

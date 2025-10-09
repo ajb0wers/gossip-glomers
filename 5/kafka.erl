@@ -89,10 +89,11 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
 handle_msg(~"poll", {Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
-  Queues = maps:fold(fun (K, Start, AccIn) ->
+  Queues = maps:fold(fun (K, From, AccIn) ->
     case Data of 
-      #{K := {_Offset, Commit, Log}} ->
-        Pred = fun({I,_}) -> I >= Start andalso I > Commit end,
+      #{K := {_Offset, _Commit, Log}} ->
+        %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
+        Pred = fun({I,_}) -> I >= From end,
         List = lists:takewhile(Pred, Log),
         Queue = lists:reverse([[I,H] || {I,H} <- List]),
         AccIn#{K => Queue};
