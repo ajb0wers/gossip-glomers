@@ -6,10 +6,12 @@
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
+-type log() :: #{binary() := {non_neg_integer(), non_neg_integer(), [{non_neg_integer(),any()}]}}.
+
 -record(state, {
-	node_id  = null :: 'null' | integer(),
-	node_ids = []   :: list(),
-  data     = #{}  :: #{binary() => {integer(), integer(), [{integer(),term()}]}}
+	node_id  = null :: 'null' | binary(),
+	node_ids = []   :: [binary()],
+  data     = #{}  :: log()
 }).
 
 main([]) -> 
