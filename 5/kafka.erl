@@ -6,12 +6,14 @@
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
 
--type log() :: #{binary() := {non_neg_integer(), non_neg_integer(), [{non_neg_integer(),any()}]}}.
 
 -record(state, {
 	node_id  = null :: 'null' | binary(),
 	node_ids = []   :: [binary()],
-  data     = #{}  :: log()
+  data     = #{}  :: #{Key :: binary() := {
+    Offset :: non_neg_integer(),
+    Commit :: non_neg_integer(),
+    Msgs :: [{non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
