@@ -9,7 +9,7 @@
 -record(state, {
 	node_id  = null :: 'null' | integer(),
 	node_ids = []   :: list(),
-  data     = #{}  :: map() %% <<Key>> => {Offset, Commit, [{I,H}..]}
+  data     = #{}  :: #{binary() => {integer(), integer(), [{integer(),term()}]}}
 }).
 
 main([]) -> 
@@ -24,6 +24,15 @@ loop() ->
       loop();
     eof ->
       stop()
+  end.
+
+handle_rpc(State) ->
+  receive
+    {reply, Msg} ->
+      io:format(?FORMAT, [json:encode(Msg)]),
+      handle_rpc(State);
+    _ ->
+      handle_rpc(State)
   end.
 
 init() ->
@@ -152,24 +161,3 @@ reply(Dest, Body, State) ->
   server_rpc ! {reply, Reply},
 	{ok, State}.
 
-handle_rpc(State) ->
-  receive
-    {rpc, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
-      handle_rpc(State);
-    {rpc, Msg, Id, Time} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
-      {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
-      NewState = State#{Id => TRef},
-      handle_rpc(NewState);
-    {ok, Id} ->
-      #{Id := Timer} = State,
-      timer:cancel(Timer),
-      NewState = maps:remove(Id, State),
-      handle_rpc(NewState);
-    {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
-      handle_rpc(State);
-    _ ->
-      handle_rpc(State)
-  end.
