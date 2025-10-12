@@ -26,8 +26,8 @@ loop() ->
     Line when is_binary(Line) -> 
 			server ! {line, Line},
       loop();
-    eof ->
-      stop()
+    {error, _} -> stop();
+    eof -> stop()
   end.
 
 handle_rpc(State) ->
