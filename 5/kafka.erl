@@ -65,11 +65,11 @@ stop() ->
 handle_line(Line, State) ->
   Msg = json:decode(Line),
   #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
-  #{<<"type">> := Callback} = Body,
-  handle_msg(Callback, {Src, Dest, Body}, State).
+  #{<<"type">> := Type} = Body,
+  handle_msg({Type, Src, Dest, Body}, State).
 
 
-handle_msg(~"init", {Src, Dest, Body}, _State) ->
+handle_msg({~"init", Src, Dest, Body}, _State) ->
   #{<<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
     <<"node_ids">> := NodeIds} = Body,
@@ -85,7 +85,7 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
   }, NewState);
 
 
-handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
+handle_msg({~"send", Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
   {Length, Commit, Log} = maps:get(K, Data, {0, 0, []}),
@@ -99,7 +99,7 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle_msg(~"poll", {Src, Dest, Body}, #state{data=Logs} = State) ->
+handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
   Msgs = maps:fold(fun (K, From, AccIn) ->
@@ -120,7 +120,7 @@ handle_msg(~"poll", {Src, Dest, Body}, #state{data=Logs} = State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 
-handle_msg(~"commit_offsets", {Src, Dest, Body}, #state{data=Data} = State) ->
+handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
   NewData = maps:fold(fun (K, End, AccIn) -> 
@@ -138,7 +138,7 @@ handle_msg(~"commit_offsets", {Src, Dest, Body}, #state{data=Data} = State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 
-handle_msg(~"list_committed_offsets", {Src, Dest, Body}, State) ->
+handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
   #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
 
   Map = maps:with(Ks, State#state.data),
@@ -150,9 +150,9 @@ handle_msg(~"list_committed_offsets", {Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 
-handle_msg(_Tag, _Msg, State) -> {ok, State}.
+handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_info(_Msg, _State) -> ok.
+handle_info(_Info, _State) -> ok.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
