@@ -18,7 +18,7 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-	register(server, spawn_link(?MODULE, init, [])),
+  register(server, spawn_link(?MODULE, init, [])),
   loop().
 
 loop() ->
