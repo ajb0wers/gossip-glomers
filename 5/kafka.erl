@@ -11,9 +11,9 @@
 	node_id  = null :: 'null' | binary(),
 	node_ids = []   :: [binary()],
   data     = #{}  :: #{Key :: binary() := {
-    Offset :: non_neg_integer(),
+    Length :: non_neg_integer(),
     Commit :: non_neg_integer(),
-    Msgs :: [{Index :: non_neg_integer(), any()}]}}
+    Msgs :: [{Offset :: non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
@@ -88,14 +88,14 @@ handle_msg(~"init", {Src, Dest, Body}, _State) ->
 handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
-  {Offset, Commit, Log} = maps:get(K, Data, {0, 0, []}),
-  Index = Offset+1,
-  NewData = Data#{K => {Index, Commit, [{Index,Msg}]++Log}},
+  {Length, Commit, Log} = maps:get(K, Data, {0, 0, []}),
+  Offset = Length+1,
+  NewData = Data#{K => {Offset, Commit, [{Offset, Msg}]++Log}},
   NewState = State#state{data=NewData},
 
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
-    <<"offset">> => Index,
+    <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
   }, NewState);
 
@@ -104,7 +104,7 @@ handle_msg(~"poll", {Src, Dest, Body}, #state{data=Logs} = State) ->
 
   Msgs = maps:fold(fun (K, From, AccIn) ->
     case Logs of 
-      #{K := {_Offset, _Commit, Log}} ->
+      #{K := {_Length, _Commit, Log}} ->
         %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
         Pred = fun({I,_}) -> I >= From end,
         List = lists:takewhile(Pred, Log),
