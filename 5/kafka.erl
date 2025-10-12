@@ -89,13 +89,13 @@ handle_msg(~"send", {Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
   {Offset, Commit, Log} = maps:get(K, Data, {0, 0, []}),
-  Offset1 = Offset+1,
-  NewData = Data#{K => {Offset1, Commit, [{Offset1,Msg}]++Log}},
+  Index = Offset+1,
+  NewData = Data#{K => {Index, Commit, [{Index,Msg}]++Log}},
   NewState = State#state{data=NewData},
 
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
-    <<"offset">> => Offset1,
+    <<"offset">> => Index,
     <<"in_reply_to">> => MsgId
   }, NewState);
 
