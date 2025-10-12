@@ -13,7 +13,7 @@
   data     = #{}  :: #{Key :: binary() := {
     Offset :: non_neg_integer(),
     Commit :: non_neg_integer(),
-    Msgs :: [{non_neg_integer(), any()}]}}
+    Msgs :: [{Index :: non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
