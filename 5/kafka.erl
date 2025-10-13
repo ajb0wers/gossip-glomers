@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([init/0, handle_rpc/1]).
+-export([init/1]).
 
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
@@ -18,35 +18,57 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-  register(server, spawn_link(?MODULE, init, [])),
-  loop().
+	register(server_rpc, self()),
+  register(server, spawn_link(?MODULE, init, [noargs])),
+  rpc_init(server).
+  %%loop().
 
-loop() ->
-  case io:get_line(?PROMPT) of
-    Line when is_binary(Line) -> 
-			server ! {line, Line},
-      loop();
-    {error, _} -> stop();
-    eof -> stop()
-  end.
+rpc_init(Pid) ->
+  rpc_init(group_leader(), Pid).
 
-handle_rpc(State) ->
-  receive
+rpc_init(IoDevice, Pid) ->
+  Ref = erlang:monitor(process, IoDevice),
+  rpc_request(#{ref=>Ref, device=>IoDevice, pid=>Pid}).
+
+rpc_request(#{ref:=ReplyAs, device:=IoDevice} = State) ->
+  Request = {get_line, unicode, ?PROMPT},
+  IoDevice ! {io_request, self(), ReplyAs, Request},
+  rpc_loop(State).
+
+rpc_request(Line, #{pid:=Pid} = State) ->
+  Pid ! {request, json:decode(Line)},
+  rpc_request(State).
+
+rpc_reply(Msg, #{device:=IoDevice} = State) ->
+  M = io_lib, F = fwrite, A = [?FORMAT, [json:encode(Msg)]],
+  Request = {put_chars, unicode, M, F, A},
+  IoDevice !  {io_request, self(), IoDevice, Request},
+  rpc_loop(State).
+
+rpc_loop(#{ref:=ReplyAs, device:=IoDevice} = State) ->
+  receive 
+    {io_reply, ReplyAs, eof} -> stop();
+    {io_reply, ReplyAs, {error, _}} -> stop();
+    {io_reply, ReplyAs, Line} ->
+      rpc_request(Line, State);
+    {io_reply, IoDevice, ok} ->
+      rpc_loop(State);
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
-      handle_rpc(State);
-    _ ->
-      handle_rpc(State)
+      rpc_reply(Msg, State);
+    _Other ->
+      rpc_loop(State)
   end.
 
-init() ->
-	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
+init(noargs) ->
 	server(#state{}).
 
 server(State) ->
 	receive
 		{line, Line} ->
 			{ok, NewState} = handle_line(Line, State),
+			server(NewState);
+		{request, Msg} ->
+			{ok, NewState} = handle_request(Msg, State),
 			server(NewState);
 		{info, Msg} ->
 			{ok, NewState} = handle_info(Msg, State),
@@ -62,12 +84,12 @@ stop() ->
 	server ! {eof, self()},
 	receive ok -> erlang:halt(0) end.
 
-handle_line(Line, State) ->
-  Msg = json:decode(Line),
+handle_line(Line, State) -> handle_request(json:decode(Line), State).
+
+handle_request(Msg, State) ->
   #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
   handle_msg({Type, Src, Dest, Body}, State).
-
 
 handle_msg({~"init", Src, Dest, Body}, _State) ->
   #{<<"msg_id">>   := MsgId,
