@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([init/1]).
+-export([rpc_reply/1]).
 
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
@@ -13,90 +13,59 @@
   data     = #{}  :: #{Key :: binary() := {
     Length :: non_neg_integer(),
     Commit :: non_neg_integer(),
-    Msgs :: [{Offset :: non_neg_integer(), any()}]}}
+    Msgs :: [{Offset :: non_neg_integer(), any()}]}},
+  device :: pid(),
+  ref :: reference()
 }).
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-	register(server_rpc, self()),
-  register(server, spawn_link(?MODULE, init, [noargs])),
-  rpc_init(server).
-  %%loop().
+  rpc_loop().
 
-rpc_init(Pid) ->
-  rpc_init(group_leader(), Pid).
-
-rpc_init(IoDevice, Pid) ->
+rpc_loop() ->
+  register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
+  IoDevice = group_leader(),
   Ref = erlang:monitor(process, IoDevice),
-  rpc_request(#{ref=>Ref, device=>IoDevice, pid=>Pid}).
+  rpc_loop(#state{device=IoDevice, ref=Ref}).
 
-rpc_request(#{ref:=ReplyAs, device:=IoDevice} = State) ->
-  Request = {get_line, unicode, ?PROMPT},
+rpc_loop(#state{device=IoDevice, ref=ReplyAs} = State) ->
+  Request = {get_line, unicode, ?PROMPT}, 
   IoDevice ! {io_request, self(), ReplyAs, Request},
-  rpc_loop(State).
-
-rpc_request(Line, #{pid:=Pid} = State) ->
-  Pid ! {request, json:decode(Line)},
   rpc_request(State).
 
-rpc_reply(Msg, #{device:=IoDevice} = State) ->
-  M = io_lib, F = fwrite, A = [?FORMAT, [json:encode(Msg)]],
-  Request = {put_chars, unicode, M, F, A},
-  IoDevice !  {io_request, self(), IoDevice, Request},
-  rpc_loop(State).
-
-rpc_loop(#{ref:=ReplyAs, device:=IoDevice} = State) ->
+rpc_request(#state{ref=ReplyAs} = State) ->
   receive 
-    {io_reply, ReplyAs, eof} -> stop();
-    {io_reply, ReplyAs, {error, _}} -> stop();
+    {io_reply, ReplyAs, eof} -> ok;
+    {io_reply, ReplyAs, {error, _}} -> ok;
     {io_reply, ReplyAs, Line} ->
-      rpc_request(Line, State);
-    {io_reply, IoDevice, ok} ->
-      rpc_loop(State);
-    {reply, Msg} ->
-      rpc_reply(Msg, State);
+      {ok, NewState} = handle_line(Line, State),
+      rpc_loop(NewState);
     _Other ->
-      rpc_loop(State)
+      rpc_request(State)
   end.
 
-init(noargs) ->
-	server(#state{}).
+rpc_reply(noargs) ->
+  rpc_reply(#{device=>group_leader()});
+rpc_reply(#{device:=IoDevice} = State) ->
+  receive
+    {reply, Msg} ->
+      io:format(IoDevice, ?FORMAT, [json:encode(Msg)]),
+      rpc_reply(State)
+  end.
 
-server(State) ->
-	receive
-		{line, Line} ->
-			{ok, NewState} = handle_line(Line, State),
-			server(NewState);
-		{request, Msg} ->
-			{ok, NewState} = handle_request(Msg, State),
-			server(NewState);
-		{info, Msg} ->
-			{ok, NewState} = handle_info(Msg, State),
-			server(NewState);
-		{eof, From} ->
-			self() ! {stop, From},
-			server(State);
-		{stop, From} ->
-			From ! ok
-	end.
 
-stop() ->
-	server ! {eof, self()},
-	receive ok -> erlang:halt(0) end.
-
-handle_line(Line, State) -> handle_request(json:decode(Line), State).
-
-handle_request(Msg, State) ->
+handle_line(Line, State) -> 
+  Msg = json:decode(Line),
   #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
   handle_msg({Type, Src, Dest, Body}, State).
 
-handle_msg({~"init", Src, Dest, Body}, _State) ->
+handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
     <<"node_ids">> := NodeIds} = Body,
 
-  NewState = #state{
+  NewState = State#state{
     node_id  = NodeId,
     node_ids = NodeIds
   },
@@ -174,8 +143,6 @@ handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_info(_Info, _State) -> ok.
-
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
@@ -184,6 +151,6 @@ reply(Dest, Body, State) ->
     <<"dest">> => Dest, 
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
-  server_rpc ! {reply, Reply},
+  rpc_reply ! {reply, Reply},
 	{ok, State}.
 
