@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([rpc_reply/1]).
+-export([rpc_request/1, rpc_reply/1]).
 
 -define(PROMPT, "").
 -define(FORMAT, "~s~n").
@@ -23,23 +23,35 @@ main([]) ->
   rpc_loop().
 
 rpc_loop() ->
+  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
   register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
   IoDevice = group_leader(),
   Ref = erlang:monitor(process, IoDevice),
-  rpc_loop(#state{device=IoDevice, ref=Ref}).
+  rpc_loop(#{device=>IoDevice, ref=>Ref}).
 
-rpc_loop(#state{device=IoDevice, ref=ReplyAs} = State) ->
+rpc_loop(#{device:=IoDevice, ref:=ReplyAs} = State) ->
   Request = {get_line, unicode, ?PROMPT}, 
   IoDevice ! {io_request, self(), ReplyAs, Request},
-  rpc_request(State).
+  rpc_line(State).
 
-rpc_request(#state{ref=ReplyAs} = State) ->
+rpc_line(#{ref:=ReplyAs} = State) ->
   receive 
     {io_reply, ReplyAs, eof} -> ok;
     {io_reply, ReplyAs, {error, _}} -> ok;
     {io_reply, ReplyAs, Line} ->
+      rpc_request ! {line, Line},
+      rpc_loop(State);
+    _Other ->
+      rpc_line(State)
+  end.
+
+rpc_request(noargs) ->
+  rpc_request(#state{});
+rpc_request(#state{} = State) ->
+  receive 
+    {line, Line} ->
       {ok, NewState} = handle_line(Line, State),
-      rpc_loop(NewState);
+      rpc_request(NewState);
     _Other ->
       rpc_request(State)
   end.
