@@ -23,8 +23,7 @@ main([]) ->
 rpc_loop() ->
   register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
   register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
-  IoDevice = group_leader(),
-  rpc_loop(IoDevice).
+  rpc_loop(group_leader()).
 
 rpc_loop(IoDevice) ->
   Request = {get_line, unicode, ?PROMPT}, 
@@ -33,10 +32,10 @@ rpc_loop(IoDevice) ->
 
 rpc_line(IoDevice) ->
   receive 
-    %% {io_reply, _, eof} -> ok;
-    %% {io_reply, _, {error, Reason}} ->
-    %%   exit(Reason);
-    {io_reply, _ReplyAs, Line} when is_binary(Line) ->
+    {io_reply, _, eof} -> ok;
+    {io_reply, _, {error, Reason}} ->
+      exit(Reason);
+    {io_reply, _ReplyAs, Line} ->
       rpc_request ! {line, Line},
       rpc_loop(IoDevice);
     _ -> rpc_line(IoDevice)
