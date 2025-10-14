@@ -13,9 +13,7 @@
   data     = #{}  :: #{Key :: binary() := {
     Length :: non_neg_integer(),
     Commit :: non_neg_integer(),
-    Msgs :: [{Offset :: non_neg_integer(), any()}]}},
-  device :: pid(),
-  ref :: reference()
+    Msgs :: [{Offset :: non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
@@ -26,23 +24,22 @@ rpc_loop() ->
   register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
   register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
   IoDevice = group_leader(),
-  Ref = erlang:monitor(process, IoDevice),
-  rpc_loop(#{device=>IoDevice, ref=>Ref}).
+  rpc_loop(IoDevice).
 
-rpc_loop(#{device:=IoDevice, ref:=ReplyAs} = State) ->
+rpc_loop(IoDevice) ->
   Request = {get_line, unicode, ?PROMPT}, 
-  IoDevice ! {io_request, self(), ReplyAs, Request},
-  rpc_line(State).
+  IoDevice ! {io_request, self(), IoDevice, Request},
+  rpc_line(IoDevice).
 
-rpc_line(#{ref:=ReplyAs} = State) ->
+rpc_line(IoDevice) ->
   receive 
-    {io_reply, ReplyAs, eof} -> ok;
-    {io_reply, ReplyAs, {error, _}} -> ok;
-    {io_reply, ReplyAs, Line} ->
+    %% {io_reply, _, eof} -> ok;
+    %% {io_reply, _, {error, Reason}} ->
+    %%   exit(Reason);
+    {io_reply, _ReplyAs, Line} when is_binary(Line) ->
       rpc_request ! {line, Line},
-      rpc_loop(State);
-    _Other ->
-      rpc_line(State)
+      rpc_loop(IoDevice);
+    _ -> rpc_line(IoDevice)
   end.
 
 rpc_request(noargs) ->
