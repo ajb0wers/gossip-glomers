@@ -23,6 +23,7 @@ COPY 2/ 2/
 COPY 3/ 3/
 COPY 3e/ 3e/
 COPY 4/ 4/
+COPY 5a/ 5a/ 
 COPY Makefile .
 
 # Expose relevant ports
