@@ -16,9 +16,6 @@ make unique-ids
 
 # Challenge #3e: Efficient Broadcast, Part II
 make broadcast-3e
-
-# Challenge #4: Grow-Only Counter
-make g-counter
 ```
 
 Build & run containerized erlang & maelstrom:
