@@ -10,7 +10,7 @@ check:
 	escript -s 4/g_set.erl
 	escript -s 4/counter.erl
 	escript -s 4/pn_counter.erl
-	escript -s 5/kafka.erl
+	escript -s 5a/kafka.erl
 
 serve:
 	@cd maelstrom; ./maelstrom serve
