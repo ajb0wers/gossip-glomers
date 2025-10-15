@@ -18,27 +18,20 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
+  loop(standard_io).
+
+loop(standard_io) -> 
+  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
+  register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
   rpc_loop().
 
 rpc_loop() ->
-  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
-  register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
-  rpc_loop(group_leader()).
-
-rpc_loop(IoDevice) ->
-  Request = {get_line, unicode, ?PROMPT}, 
-  IoDevice ! {io_request, self(), IoDevice, Request},
-  rpc_line(IoDevice).
-
-rpc_line(IoDevice) ->
-  receive 
-    {io_reply, _, eof} -> ok;
-    {io_reply, _, {error, Reason}} ->
-      exit(Reason);
-    {io_reply, _ReplyAs, Line} ->
+  case io:get_line(?PROMPT) of
+    eof -> ok;
+    {error, Reason} -> exit(Reason);
+    Line ->
       rpc_request ! {line, Line},
-      rpc_loop(IoDevice);
-    _ -> rpc_line(IoDevice)
+      rpc_loop()
   end.
 
 rpc_request(noargs) ->
@@ -53,14 +46,13 @@ rpc_request(#state{} = State) ->
   end.
 
 rpc_reply(noargs) ->
-  rpc_reply(#{device=>group_leader()});
-rpc_reply(#{device:=IoDevice} = State) ->
+  rpc_reply(#{});
+rpc_reply(State) ->
   receive
     {reply, Msg} ->
-      io:format(IoDevice, ?FORMAT, [json:encode(Msg)]),
+      io:format(?FORMAT, [json:encode(Msg)]),
       rpc_reply(State)
   end.
-
 
 handle_line(Line, State) -> 
   Msg = json:decode(Line),
