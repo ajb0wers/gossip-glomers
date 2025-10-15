@@ -18,7 +18,7 @@ https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz
 
 # RUN mkdir bin
 # 1/echo.erl 2/uniqueids.erl 3e/broadcast.erl
-COPY 1/ 1/
+COPY 1 /1/
 COPY 2/ 2/
 COPY 3/ 3/
 COPY 3e/ 3e/
