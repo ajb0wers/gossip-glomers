@@ -14,4 +14,4 @@ kafka() {
   cat -
 } 
 
-"$@" | ./"${1}".erl
+"${@:-kafka}" | ./kafka.erl
