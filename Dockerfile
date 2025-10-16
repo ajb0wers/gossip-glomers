@@ -2,13 +2,13 @@
 FROM erlang:27
 
 RUN apt-get update && apt-get -y install --no-install-recommends \
-ed graphviz gnuplot wget default-jdk
+ed graphviz gnuplot curl default-jdk
 
 #Set working directory
 RUN mkdir /app
 WORKDIR /app
 
-RUN wget --no-verbose -O - -- \
+RUN curl -SL \
 https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 | tar -xjC /app
 
