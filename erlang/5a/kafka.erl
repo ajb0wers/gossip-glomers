@@ -10,10 +10,10 @@
 -record(state, {
 	node_id  = null :: 'null' | binary(),
 	node_ids = []   :: [binary()],
-  data     = #{}  :: #{Key :: binary() := {
-    Length :: non_neg_integer(),
-    Commit :: non_neg_integer(),
-    Msgs :: [{Offset :: non_neg_integer(), any()}]}}
+  data     = #{}  :: #{Key::binary() := {
+    Length::non_neg_integer(),
+    Commit::non_neg_integer(),
+    Msgs :: [{Offset::non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
