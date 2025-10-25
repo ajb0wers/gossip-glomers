@@ -54,11 +54,17 @@ rpc_reply(State) ->
       rpc_reply(State)
   end.
 
-handle_line(Line, State) -> 
+parse_line(Line) ->
   Msg = json:decode(Line),
-  #{<<"src">> := Src, <<"dest">> := Dest, <<"body">> := Body} = Msg,
+  #{<<"src">> := Src,
+    <<"dest">> := Dest,
+    <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
-  handle_msg({Type, Src, Dest, Body}, State).
+  {Type, Src, Dest, Body}.
+
+handle_line(Line, State) -> 
+  Msg = parse_line(Line),
+  handle_msg(Msg, State).
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
