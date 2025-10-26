@@ -62,9 +62,9 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
 
-handle_line(Line, State) -> 
+handle_line(Line, #state{node_id=NodeId} = State) -> 
   Msg = parse_line(Line),
-  handle_msg(Msg, State).
+  handle_msg(Msg, State);
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
