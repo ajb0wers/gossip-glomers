@@ -3,17 +3,13 @@
 
 -export([rpc_request/1, rpc_reply/1]).
 
--define(PROMPT, "").
--define(FORMAT, "~s~n").
-
-
 -record(state, {
-	node_id  = null :: 'null' | binary(),
-	node_ids = []   :: [binary()],
+  node_id  = null :: 'null' | binary(),
+  node_ids = []   :: [binary()],
   data     = #{}  :: #{Key::binary() := {
-    Length::non_neg_integer(),
-    Commit::non_neg_integer(),
-    Msgs :: [{Offset::non_neg_integer(), any()}]}}
+                        Length::non_neg_integer(),
+                        Commit::non_neg_integer(),
+                        Msgs :: [{Offset::non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
@@ -26,7 +22,7 @@ loop(standard_io) ->
   rpc_loop().
 
 rpc_loop() ->
-  case io:get_line(?PROMPT) of
+  case io:get_line([]) of
     eof -> ok;
     {error, Reason} -> exit(Reason);
     Line ->
@@ -39,7 +35,8 @@ rpc_request(noargs) ->
 rpc_request(#state{} = State) ->
   receive 
     {line, Line} ->
-      {ok, NewState} = handle_line(Line, State),
+      {reply, Reply, NewState} = handle_line(Line, State),
+      rpc_reply ! {reply, Reply},
       rpc_request(NewState);
     _Other ->
       rpc_request(State)
@@ -50,7 +47,8 @@ rpc_reply(noargs) ->
 rpc_reply(State) ->
   receive
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      Reply = json:encode(Msg),
+      io:format("~s~n", [Reply]),
       rpc_reply(State)
   end.
 
@@ -157,6 +155,5 @@ reply(Dest, Body, State) ->
     <<"dest">> => Dest, 
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
-  rpc_reply ! {reply, Reply},
-	{ok, State}.
+  {reply, Reply, State}.
 
