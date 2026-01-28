@@ -16,13 +16,9 @@ make unique-ids
 
 # Challenge #3e: Efficient Broadcast, Part II
 make broadcast-3e
-```
 
-Build & run containerized erlang & maelstrom:
-
-```Bash
-podman build -t ajb0wers/gossip-glomers .
-podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
+# Build & run containerized erlang & maelstrom
+make podman
 ```
 
 ## See also

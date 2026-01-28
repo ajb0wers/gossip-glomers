@@ -15,6 +15,9 @@ check:
 serve:
 	@cd maelstrom; ./maelstrom serve
 
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 
 echo:
 	@echo 'Challenge #1: Echo'
