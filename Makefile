@@ -3,7 +3,7 @@
 all: check
 
 check:
-	escript -s erlang/1/echo.erl
+	escript -s erlang/1/maelstrom-echo.erl
 	escript -s erlang/2/uniqueids.erl
 	escript -s erlang/3/broadcast.erl
 	escript -s erlang/3e/broadcast.erl
@@ -19,7 +19,7 @@ serve:
 echo:
 	@echo 'Challenge #1: Echo'
 	@cd maelstrom; \
-	./maelstrom test -w echo --bin ../erlang/1/echo.erl \
+	./maelstrom test -w echo --bin ../erlang/1/maelstrom-echo.erl \
 		--node-count 5 --time-limit 10
 
 unique-ids:
