@@ -83,7 +83,7 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
 handle_msg({~"send", Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
-  {Length, Commit, Log} = maps:get(K, Data, {0, 0, []}),
+  {Length, Commit, Log} = maps:get(K, Data, _DefaultIfNotExists = {0,0,[]}),
   Offset = Length+1,
   NewData = Data#{K => {Offset, Commit, [{Offset, Msg}]++Log}},
   NewState = State#state{data=NewData},
