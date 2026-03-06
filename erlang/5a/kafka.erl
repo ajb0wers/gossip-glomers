@@ -80,13 +80,11 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
   }, NewState);
 
 
-handle_msg({~"send", Src, Dest, Body}, #state{data=Data} = State) ->
+handle_msg({~"send", Src, Dest, Body}, #state{data=Streams} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
-  {Length, Commit, Log} = maps:get(K, Data, _DefaultIfNotExists = {0,0,[]}),
-  Offset = Length+1,
-  NewData = Data#{K => {Offset, Commit, [{Offset, Msg}]++Log}},
-  NewState = State#state{data=NewData},
+  {Offset, Logs} = append(K, Msg, Streams),
+  NewState = State#state{data=Logs},
 
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
@@ -97,17 +95,7 @@ handle_msg({~"send", Src, Dest, Body}, #state{data=Data} = State) ->
 handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
-  Msgs = maps:fold(fun (K, From, AccIn) ->
-    case Logs of 
-      #{K := {_Length, _Commit, Log}} ->
-        %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
-        Pred = fun({I,_}) -> I >= From end,
-        List = lists:takewhile(Pred, Log),
-        Queue = lists:reverse([[I,H] || {I,H} <- List]),
-        AccIn#{K => Queue};
-      _NoMatch -> AccIn
-    end
-  end, #{}, Offsets),
+  Msgs = read(Offsets, Logs),
 
   reply(Src, Dest, #{
     <<"type">> => <<"poll_ok">>,
@@ -118,14 +106,7 @@ handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
 handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 
-  NewData = maps:fold(fun (K, End, AccIn) -> 
-    case Data of
-      #{K := {Offset, Commit, Log}} when End > Commit ->
-        AccIn#{K := {Offset, End, Log}};
-      _ -> AccIn
-    end
-  end, Data, Offsets),
-
+  NewData = commit(Offsets, Data),
   NewState = State#state{data=NewData},
 
   reply(Src, Dest, #{
@@ -136,8 +117,7 @@ handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
 handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
   #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
 
-  Map = maps:with(Ks, State#state.data),
-  Offsets = #{K => Commit || K := {_,Commit,_} <- Map},
+  Offsets = list(Ks, State#state.data),
 
   reply(Src, Dest, #{
     <<"type">> => <<"list_committed_offsets_ok">>,
@@ -157,3 +137,35 @@ reply(Dest, Body, State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
+append(Key, Msg, Logs) ->
+  CreateIfNotExists = {0,0,[]},
+  {Length, Commit, List} = maps:get(Key, Logs, CreateIfNotExists),
+  Offset = Length+1,
+  Appended = Logs#{Key => {Offset, Commit, [{Offset, Msg}]++List}}, 
+  {Offset, Appended}.
+
+read(Offsets, Logs) ->
+  maps:fold(fun (K, From, AccIn) ->
+    case Logs of 
+      #{K := {_Length, _Commit, Log}} ->
+        %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
+        Pred = fun({I,_}) -> I >= From end,
+        List = lists:takewhile(Pred, Log),
+        Queue = lists:reverse([[I,H] || {I,H} <- List]),
+        AccIn#{K => Queue};
+      _NoMatch -> AccIn
+    end
+  end, #{}, Offsets).
+
+commit(Offsets, Logs) ->
+  maps:fold(fun (K, End, AccIn) -> 
+    case Logs of
+      #{K := {Offset, Commit, Log}} when End > Commit ->
+        AccIn#{K := {Offset, End, Log}};
+      _ -> AccIn
+    end
+  end, Logs, Offsets).
+
+list(Keys, Logs) ->
+  Map = maps:with(Keys, Logs),
+  #{K => Commit || K := {_,Commit,_} <- Map}.
