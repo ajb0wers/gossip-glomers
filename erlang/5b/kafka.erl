@@ -6,6 +6,7 @@
 -record(state, {
   node_id  = null :: 'null' | binary(),
   node_ids = []   :: [binary()],
+  callbacks = #{} :: #{Key::non_neg_integer() :: any()},
   data     = #{}  :: #{Key::binary() := {
                           Length::non_neg_integer(),
                           Commit::non_neg_integer(),
@@ -35,8 +36,7 @@ rpc_request(noargs) ->
 rpc_request(#state{} = State) ->
   receive 
     {line, Line} ->
-      {reply, Reply, NewState} = handle_line(Line, State),
-      rpc_reply ! {reply, Reply},
+      NewState = handle_line(Line, State),
       rpc_request(NewState);
     _Other ->
       rpc_request(State)
@@ -62,7 +62,12 @@ parse_line(Line) ->
 
 handle_line(Line, State) -> 
   Msg = parse_line(Line),
-  handle_msg(Msg, State).
+  case handle_msg(Msg, State) of
+    {reply, Reply, NewState} ->
+      rpc_reply ! {reply, Reply},
+      NewState;
+    {ok, State} -> State
+  end.
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
@@ -124,6 +129,34 @@ handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
     <<"offsets">> => Offsets,
     <<"in_reply_to">> => MsgId
   }, State);
+
+handle_msg({~"read_ok", "lin-kv", Dest, Body},
+    #state{callbacks=Callbacks0} = State)
+  when #{ReplyId := {read, Key} = State ->
+
+  #{<<"value">> := Value, <<"in_reply_to">> := ReplyId} = Body,
+  
+  Callbacks1 = maps:remove(ReplyId),
+  N = 1, %% length([Append...])
+  To = Value + N,
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  Callbacks = Callbacks1#{MsgId => {cas, Key, From, To, N}},
+  
+  reply(Src, Dest, #{
+    <<"type">> => <<"cas">>,
+    <<"key">> => Key,
+    <<"from">> => Value,
+    <<"to">> => To,
+    <<"msg_id">> => MsgId
+  }, State#state{callbacks=Callbacks});
+handle_msg({~"cas_ok", "lin-kv", Dest, Body}, State) ->
+  %% #{<<"in_reply_to">> := MsgId} = Body,
+  {ok, State};
+handle_msg({~"write_ok", "lin-kv", Dest, Body}, State) ->
+  {ok, State};
+handle_msg({~"error", "lin-kv", Dest, Body}, State) ->
+  %% #{<<"code">> := 22, <<"in_reply_to">> := MsgId} = Body,
+  {ok, State};
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
