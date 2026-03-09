@@ -6,7 +6,7 @@
 -record(state, {
   node_id  = null :: 'null' | binary(),
   node_ids = []   :: [binary()],
-  callbacks = #{} :: #{Key::non_neg_integer() :: any()},
+  callbacks = #{} :: #{MsgId::non_neg_integer() := any()},
   data     = #{}  :: #{Key::binary() := {
                           Length::non_neg_integer(),
                           Commit::non_neg_integer(),
@@ -36,11 +36,21 @@ rpc_request(noargs) ->
 rpc_request(#state{} = State) ->
   receive 
     {line, Line} ->
-      NewState = handle_line(Line, State),
-      rpc_request(NewState);
+      Reply = handle_line(Line, State),
+      rpc_request(Reply);
     _Other ->
       rpc_request(State)
-  end.
+  end;
+rpc_request({ok, State}) ->
+  rpc_request(State);
+rpc_request({reply, Reply, State}) ->
+  rpc_reply ! {reply, Reply},
+  rpc_request(State);
+rpc_request({reply, Reply, State, Info}) ->
+  rpc_reply ! {reply, Reply},
+  NewState = handle_continue(Info, State),
+  rpc_request(NewState).
+
 
 rpc_reply(noargs) ->
   rpc_reply(#{});
@@ -62,12 +72,7 @@ parse_line(Line) ->
 
 handle_line(Line, State) -> 
   Msg = parse_line(Line),
-  case handle_msg(Msg, State) of
-    {reply, Reply, NewState} ->
-      rpc_reply ! {reply, Reply},
-      NewState;
-    {ok, State} -> State
-  end.
+  handle_msg(Msg, State).
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
@@ -91,11 +96,13 @@ handle_msg({~"send", Src, Dest, Body}, #state{data=Streams} = State) ->
   {Offset, Logs} = append(K, Msg, Streams),
   NewState = State#state{data=Logs},
 
-  reply(Src, Dest, #{
+  {reply, Reply, NewState} = reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
     <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
-  }, NewState);
+  }, NewState),
+
+  {reply, Reply, NewState, {read, K}};
 
 handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
@@ -130,18 +137,15 @@ handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 
-handle_msg({~"read_ok", "lin-kv", Dest, Body},
-    #state{callbacks=Callbacks0} = State)
-  when #{ReplyId := {read, Key} = State ->
-
+handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body},
+    #state{callbacks=Callbacks0} = State) ->
   #{<<"value">> := Value, <<"in_reply_to">> := ReplyId} = Body,
-  
-  Callbacks1 = maps:remove(ReplyId),
-  N = 1, %% length([Append...])
-  To = Value + N,
+  #{ReplyId := {read, Key}} = Callbacks0,
+  N = 1, To = Value + N,
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks = Callbacks1#{MsgId => {cas, Key, From, To, N}},
-  
+  Callbacks1 = maps:remove(ReplyId, Callbacks0),
+  Callbacks = Callbacks1#{MsgId => {cas, Key, Value, To, N}},
+
   reply(Src, Dest, #{
     <<"type">> => <<"cas">>,
     <<"key">> => Key,
@@ -149,16 +153,26 @@ handle_msg({~"read_ok", "lin-kv", Dest, Body},
     <<"to">> => To,
     <<"msg_id">> => MsgId
   }, State#state{callbacks=Callbacks});
-handle_msg({~"cas_ok", "lin-kv", Dest, Body}, State) ->
+handle_msg({~"cas_ok", "lin-kv", _Dest, _Body}, State) ->
   %% #{<<"in_reply_to">> := MsgId} = Body,
   {ok, State};
-handle_msg({~"write_ok", "lin-kv", Dest, Body}, State) ->
+handle_msg({~"write_ok", "lin-kv", _Dest, _Body}, State) ->
   {ok, State};
-handle_msg({~"error", "lin-kv", Dest, Body}, State) ->
+handle_msg({~"error", "lin-kv", _Dest, _Body}, State) ->
   %% #{<<"code">> := 22, <<"in_reply_to">> := MsgId} = Body,
   {ok, State};
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
+
+handle_continue({read, Key} = Info, #state{callbacks=Callbacks} = State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  NewState = State#state{callbacks=Callbacks#{MsgId => Info}},
+  reply("lin-kv", #{
+    <<"type">> => <<"read">>,
+    <<"key">> => Key,
+    <<"msg_id">> => MsgId
+  }, NewState);
+handle_continue(_Info, State) -> {ok, State}.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
@@ -169,6 +183,7 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   {reply, Reply, State}.
+
 
 append(Key, Msg, Logs) ->
   CreateIfNotExists = {0,0,[]},

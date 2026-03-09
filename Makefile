@@ -11,6 +11,7 @@ check:
 	escript -s erlang/4/counter.erl
 	escript -s erlang/4/pn_counter.erl
 	escript -s erlang/5a/kafka.erl
+	escript -s erlang/5b/kafka.erl
 
 serve:
 	@cd maelstrom; ./maelstrom serve
