@@ -156,13 +156,32 @@ handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body}, State) ->
     <<"key">> => Key,
     <<"from">> => Value,
     <<"to">> => To,
+    <<"create_if_not_exists">> => true,
     <<"msg_id">> => MsgId
   }, State#state{append_id=Callbacks});
-handle_msg({~"cas_ok", ~"lin-kv", _Dest, _Body}, State) ->
-  %% #{<<"in_reply_to">> := MsgId} = Body,
-  {ok, State};
-handle_msg({~"write_ok", ~"lin-kv", _Dest, _Body}, State) ->
-  {ok, State};
+handle_msg({~"cas_ok", ~"lin-kv", Dest, Body}, State) ->
+  #{<<"in_reply_to">> := ReplyId} = Body,
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  #{ReplyId := {Key, Value, To, _N}} = State#state.append_id,
+
+  Callbacks0 = State#state.append_id,
+  Callbacks1 = maps:remove(ReplyId, Callbacks0),
+  Callbacks = Callbacks1#{MsgId => {Key, Value, To}},
+
+  reply(~"seq-kv", Dest, #{
+    <<"type">> => <<"write">>,
+    <<"key">> => [Key,To],
+    <<"value">> => Value,
+    <<"msg_id">> => MsgId
+  }, State#state{append_id=Callbacks});
+handle_msg({~"write_ok", ~"seq-kv", _Dest, Body}, State) ->
+  #{<<"in_reply_to">> := ReplyId} = Body,
+  #{ReplyId := {_Key, _Value, _Offset}} = State#state.append_id,
+
+  Callbacks0 = State#state.append_id,
+  Callbacks = maps:remove(ReplyId, Callbacks0),
+
+  {ok, State#state{append_id=Callbacks}};
 handle_msg({~"error", ~"lin-kv", _Dest, _Body}, State) ->
   %% #{<<"code">> := 22, <<"in_reply_to">> := MsgId} = Body,
   {ok, State};
