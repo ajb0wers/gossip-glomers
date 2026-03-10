@@ -4,13 +4,14 @@
 -export([rpc_request/1, rpc_reply/1]).
 
 -record(state, {
-  node_id  = null :: 'null' | binary(),
-  node_ids = []   :: [binary()],
-  callbacks = #{} :: #{MsgId::non_neg_integer() := any()},
-  data     = #{}  :: #{Key::binary() := {
-                          Length::non_neg_integer(),
-                          Commit::non_neg_integer(),
-                          Msgs :: [{Offset::non_neg_integer(), any()}]}}
+  node_id   = null :: 'null' | binary(),
+  node_ids  = []   :: [binary()],
+  % append_msg = #{} :: #{Key::binary() := Values::list()},
+  append_id = #{} :: #{MsgId::non_neg_integer() := any()},
+  data = #{} :: #{Key::binary() := {
+                    Length::non_neg_integer(),
+                    Commit::non_neg_integer(),
+                    Msgs::[{Offset::non_neg_integer(), any()}]}}
 }).
 
 main([]) -> 
@@ -46,10 +47,10 @@ rpc_request({ok, State}) ->
 rpc_request({reply, Reply, State}) ->
   rpc_reply ! {reply, Reply},
   rpc_request(State);
-rpc_request({reply, Reply, State, Info}) ->
-  rpc_reply ! {reply, Reply},
-  NewState = handle_continue(Info, State),
-  rpc_request(NewState).
+rpc_request({reply, Reply0, State, Info}) ->
+  rpc_reply ! {reply, Reply0},
+  Reply = handle_continue(Info, State),
+  rpc_request(Reply).
 
 
 rpc_reply(noargs) ->
@@ -94,6 +95,9 @@ handle_msg({~"send", Src, Dest, Body}, #state{data=Streams} = State) ->
   #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
 
   {Offset, Logs} = append(K, Msg, Streams),
+  %% List = map:get(K, State#state.append_msg, []),
+  %% Msgs = State#state.append_list#{K => List++Msg),
+  %% NewState = State#state{data=Logs, append_msg=Msgs},
   NewState = State#state{data=Logs},
 
   {reply, Reply, NewState} = reply(Src, Dest, #{
@@ -137,14 +141,15 @@ handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 
-handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body},
-    #state{callbacks=Callbacks0} = State) ->
-  #{<<"value">> := Value, <<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := {read, Key}} = Callbacks0,
-  N = 1, To = Value + N,
+handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body}, State) ->
+  #{~"value" := Value, ~"in_reply_to" := ReplyId} = Body,
   MsgId = erlang:unique_integer([monotonic, positive]), 
+  #{ReplyId := Key} = State#state.append_id,
+  N = 1, To = Value + N,
+
+  Callbacks0 = State#state.append_id,
   Callbacks1 = maps:remove(ReplyId, Callbacks0),
-  Callbacks = Callbacks1#{MsgId => {cas, Key, Value, To, N}},
+  Callbacks = Callbacks1#{MsgId => {Key, Value, To, N}},
 
   reply(Src, Dest, #{
     <<"type">> => <<"cas">>,
@@ -152,22 +157,22 @@ handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body},
     <<"from">> => Value,
     <<"to">> => To,
     <<"msg_id">> => MsgId
-  }, State#state{callbacks=Callbacks});
-handle_msg({~"cas_ok", "lin-kv", _Dest, _Body}, State) ->
+  }, State#state{append_id=Callbacks});
+handle_msg({~"cas_ok", ~"lin-kv", _Dest, _Body}, State) ->
   %% #{<<"in_reply_to">> := MsgId} = Body,
   {ok, State};
-handle_msg({~"write_ok", "lin-kv", _Dest, _Body}, State) ->
+handle_msg({~"write_ok", ~"lin-kv", _Dest, _Body}, State) ->
   {ok, State};
-handle_msg({~"error", "lin-kv", _Dest, _Body}, State) ->
+handle_msg({~"error", ~"lin-kv", _Dest, _Body}, State) ->
   %% #{<<"code">> := 22, <<"in_reply_to">> := MsgId} = Body,
   {ok, State};
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_continue({read, Key} = Info, #state{callbacks=Callbacks} = State) ->
+handle_continue({read, Key} = _Info, #state{append_id=Callbacks} = State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  NewState = State#state{callbacks=Callbacks#{MsgId => Info}},
-  reply("lin-kv", #{
+  NewState = State#state{append_id=Callbacks#{MsgId => Key}},
+  reply(<<"lin-kv">>, #{
     <<"type">> => <<"read">>,
     <<"key">> => Key,
     <<"msg_id">> => MsgId
