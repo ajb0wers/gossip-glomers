@@ -47,6 +47,9 @@ rpc_request({ok, State}) ->
 rpc_request({reply, Reply, State}) ->
   rpc_reply ! {reply, Reply},
   rpc_request(State);
+rpc_request({noreply, State, Info}) ->
+  Reply = handle_continue(Info, State),
+  rpc_request(Reply);
 rpc_request({reply, Reply0, State, Info}) ->
   rpc_reply ! {reply, Reply0},
   Reply = handle_continue(Info, State),
@@ -182,20 +185,46 @@ handle_msg({~"write_ok", ~"seq-kv", _Dest, Body}, State) ->
   Callbacks = maps:remove(ReplyId, Callbacks0),
 
   {ok, State#state{append_id=Callbacks}};
-handle_msg({~"error", ~"lin-kv", _Dest, _Body}, State) ->
-  %% #{<<"code">> := 22, <<"in_reply_to">> := MsgId} = Body,
-  {ok, State};
+handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
+  when map_get(~"code", Body) == 20 ->
+  #{<<"in_reply_to">> := ReplyId} = Body,
+  #{ReplyId := Key} = State#state.append_id,
+  Callbacks0 = State#state.append_id,
+  Callbacks = maps:remove(ReplyId, Callbacks0),
+  {noreply, State#state{append_id=Callbacks}, {cas, Key}};
+handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
+  when map_get(~"code", Body) == 22 ->
+  #{<<"in_reply_to">> := ReplyId} = Body,
+  #{<<"in_reply_to">> := ReplyId} = Body,
+  #{ReplyId := Key} = State#state.append_id,
+  Callbacks0 = State#state.append_id,
+  Callbacks = maps:remove(ReplyId, Callbacks0),
+  {noreply, State#state{append_id=Callbacks}, {read, Key}};
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_continue({read, Key} = _Info, #state{append_id=Callbacks} = State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   NewState = State#state{append_id=Callbacks#{MsgId => Key}},
-  reply(<<"lin-kv">>, #{
+  reply(~"lin-kv", #{
     <<"type">> => <<"read">>,
     <<"key">> => Key,
     <<"msg_id">> => MsgId
   }, NewState);
+handle_continue({cas, Key}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  N = 1, Value = 0, To = Value + N,
+  Callbacks0 = State#state.append_id,
+  Callbacks = Callbacks0#{MsgId => {Key, Value, To, N}},
+  reply(~"lin-kv", #{
+    <<"type">> => <<"cas">>,
+    <<"key">> => Key,
+    <<"from">> => Value,
+    <<"to">> => To,
+    <<"create_if_not_exists">> => true,
+    <<"msg_id">> => MsgId
+  }, State#state{append_id=Callbacks});
+  
 handle_continue(_Info, State) -> {ok, State}.
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
