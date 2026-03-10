@@ -1,5 +1,5 @@
 # Build stage 0
-FROM erlang:27
+FROM erlang:28
 
 RUN apt-get update && apt-get -y install --no-install-recommends \
 ed graphviz gnuplot curl default-jdk
