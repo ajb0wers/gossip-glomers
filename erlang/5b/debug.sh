@@ -3,6 +3,7 @@ set -euo pipefail
 
 kafka() {
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n1","n2","n3"]}}'
+
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":2,"type":"send","key":"k1","msg":9}}'
   # {"body":{"key":"k1","msg_id":1,"type":"read"},"dest":"lin-kv","src":"n1"}
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":1,"type":"error","code":20}}'
@@ -10,6 +11,7 @@ kafka() {
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":2,"type":"cas_ok"}}'
   # {"body":{"key":["k1",1],"msg_id":3,"type":"write","value":0},"dest":"seq-kv","src":"n1"}
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":3,"type":"write_ok"}}'
+
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":3,"type":"send","key":"k1","msg":5}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":4,"type":"read_ok","value":1000}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":5,"type":"cas_ok"}}'

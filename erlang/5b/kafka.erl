@@ -195,7 +195,6 @@ handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
 handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
   when map_get(~"code", Body) == 22 ->
   #{<<"in_reply_to">> := ReplyId} = Body,
-  #{<<"in_reply_to">> := ReplyId} = Body,
   #{ReplyId := Key} = State#state.append_id,
   Callbacks0 = State#state.append_id,
   Callbacks = maps:remove(ReplyId, Callbacks0),
