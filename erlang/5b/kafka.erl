@@ -3,6 +3,9 @@
 
 -export([rpc_request/1, rpc_reply/1]).
 
+-define(KEY_DOES_NOT_EXIST, 20).
+-define(PRECONDITION_FAILED, 22).
+
 -record(state, {
   node_id   = null :: 'null' | binary(),
   node_ids  = []   :: [binary()],
@@ -94,22 +97,8 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
   }, NewState);
 
 
-handle_msg({~"send", Src, Dest, Body}, #state{data=Streams} = State) ->
-  #{<<"key">> := K, <<"msg">> := Msg, <<"msg_id">> := MsgId} = Body,
-
-  {Offset, Logs} = append(K, Msg, Streams),
-  %% List = map:get(K, State#state.append_msg, []),
-  %% Msgs = State#state.append_list#{K => List++Msg),
-  %% NewState = State#state{data=Logs, append_msg=Msgs},
-  NewState = State#state{data=Logs},
-
-  {reply, Reply, NewState} = reply(Src, Dest, #{
-    <<"type">> => <<"send_ok">>,
-    <<"offset">> => Offset,
-    <<"in_reply_to">> => MsgId
-  }, NewState),
-
-  {reply, Reply, NewState, {read, K}};
+handle_msg({~"send", Src, Dest, Body}, State) ->
+  {noreply, State, {append, {Src,Dest,Body}}};
 
 handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
@@ -147,12 +136,14 @@ handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
 handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body}, State) ->
   #{~"value" := Value, ~"in_reply_to" := ReplyId} = Body,
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  #{ReplyId := Key} = State#state.append_id,
+  #{ReplyId := Msg} = State#state.append_id,
+  {_,_, #{<<"key">> := Key}} = Msg,
   N = 1, To = Value + N,
 
   Callbacks0 = State#state.append_id,
   Callbacks1 = maps:remove(ReplyId, Callbacks0),
-  Callbacks = Callbacks1#{MsgId => {Key, Value, To, N}},
+  Callbacks = Callbacks1#{MsgId => {{Key, Value, To, N}, Msg}},
+  NewState = State#state{append_id=Callbacks},
 
   reply(Src, Dest, #{
     <<"type">> => <<"cas">>,
@@ -161,15 +152,16 @@ handle_msg({~"read_ok", ~"lin-kv" = Src, Dest, Body}, State) ->
     <<"to">> => To,
     <<"create_if_not_exists">> => true,
     <<"msg_id">> => MsgId
-  }, State#state{append_id=Callbacks});
+  }, NewState);
 handle_msg({~"cas_ok", ~"lin-kv", Dest, Body}, State) ->
   #{<<"in_reply_to">> := ReplyId} = Body,
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  #{ReplyId := {Key, Value, To, _N}} = State#state.append_id,
+  #{ReplyId := {{Key, _, To, _N}, Msg}} = State#state.append_id,
+  {_,_, #{<<"msg">> := Value}} = Msg,
 
   Callbacks0 = State#state.append_id,
   Callbacks1 = maps:remove(ReplyId, Callbacks0),
-  Callbacks = Callbacks1#{MsgId => {Key, Value, To}},
+  Callbacks = Callbacks1#{MsgId => {{Key, Value, To}, Msg}},
 
   reply(~"seq-kv", Dest, #{
     <<"type">> => <<"write">>,
@@ -177,44 +169,52 @@ handle_msg({~"cas_ok", ~"lin-kv", Dest, Body}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, State#state{append_id=Callbacks});
-handle_msg({~"write_ok", ~"seq-kv", _Dest, Body}, State) ->
+handle_msg({~"write_ok", ~"seq-kv", _, Body}, State) ->
   #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := {_Key, _Value, _Offset}} = State#state.append_id,
+  #{ReplyId := {{_, _, Offset}, Msg}} = State#state.append_id,
+  {Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
 
   Callbacks0 = State#state.append_id,
   Callbacks = maps:remove(ReplyId, Callbacks0),
+  NewState = State#state{append_id=Callbacks},
 
-  {ok, State#state{append_id=Callbacks}};
+  reply(Src, Dest, #{
+    <<"type">> => <<"send_ok">>,
+    <<"offset">> => Offset,
+    <<"in_reply_to">> => MsgId
+  }, NewState);
 handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
-  when map_get(~"code", Body) == 20 ->
+  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
   #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := Key} = State#state.append_id,
+  #{ReplyId := Msg} = State#state.append_id,
   Callbacks0 = State#state.append_id,
   Callbacks = maps:remove(ReplyId, Callbacks0),
-  {noreply, State#state{append_id=Callbacks}, {cas, Key}};
+  {noreply, State#state{append_id=Callbacks}, {cas, Msg}};
 handle_msg({~"error", ~"lin-kv", _Dest, Body}, State)
-  when map_get(~"code", Body) == 22 ->
+  when map_get(~"code", Body) == ?PRECONDITION_FAILED ->
   #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := Key} = State#state.append_id,
+  #{ReplyId := {_, Msg}} = State#state.append_id,
   Callbacks0 = State#state.append_id,
   Callbacks = maps:remove(ReplyId, Callbacks0),
-  {noreply, State#state{append_id=Callbacks}, {read, Key}};
+  {noreply, State#state{append_id=Callbacks}, {append, Msg}};
 
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_continue({read, Key} = _Info, #state{append_id=Callbacks} = State) ->
+handle_continue({append, Msg}, #state{append_id=Callbacks} = State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  NewState = State#state{append_id=Callbacks#{MsgId => Key}},
+  {_, _, #{<<"key">> := Key}} = Msg,
+  NewState = State#state{append_id=Callbacks#{MsgId => Msg}},
   reply(~"lin-kv", #{
-    <<"type">> => <<"read">>,
-    <<"key">> => Key,
+    <<"type">>   => <<"read">>,
+    <<"key">>    => Key,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_continue({cas, Key}, State) ->
+handle_continue({cas, Msg}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
+  {_, _, #{<<"key">> := Key}} = Msg,
   N = 1, Value = 0, To = Value + N,
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {Key, Value, To, N}},
+  Callbacks = Callbacks0#{MsgId => {{Key, Value, To, N}, Msg}},
   reply(~"lin-kv", #{
     <<"type">> => <<"cas">>,
     <<"key">> => Key,
@@ -236,13 +236,6 @@ reply(Dest, Body, State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-
-append(Key, Msg, Logs) ->
-  CreateIfNotExists = {0,0,[]},
-  {Length, Commit, List} = maps:get(Key, Logs, CreateIfNotExists),
-  Offset = Length+1,
-  Appended = Logs#{Key => {Offset, Commit, [{Offset, Msg}]++List}}, 
-  {Offset, Appended}.
 
 read(Offsets, Logs) ->
   maps:fold(fun (K, From, AccIn) ->
