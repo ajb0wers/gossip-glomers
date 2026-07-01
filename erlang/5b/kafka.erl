@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([rpc_request/1, rpc_reply/1]).
+-export([rpc_request/1, rpc_out/0]).
 
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
@@ -19,20 +19,25 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
+  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
+  register(rpc_out, spawn_link(rpc_out)),
   loop(standard_io).
 
 loop(standard_io) -> 
-  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
-  register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
-  rpc_loop().
-
-rpc_loop() ->
   case io:get_line([]) of
     eof -> ok;
     {error, Reason} -> exit(Reason);
     Line ->
       rpc_request ! {line, Line},
-      rpc_loop()
+      loop(standard_io)
+  end.
+
+rpc_out() ->
+  receive
+    {reply, Msg} ->
+      Reply = json:encode(Msg),
+      io:format("~s~n", [Reply]),
+      rpc_out()
   end.
 
 rpc_request(noargs) ->
@@ -48,26 +53,16 @@ rpc_request(#state{} = State) ->
 rpc_request({ok, State}) ->
   rpc_request(State);
 rpc_request({reply, Reply, State}) ->
-  rpc_reply ! {reply, Reply},
+  rpc_out ! {reply, Reply},
   rpc_request(State);
 rpc_request({noreply, State, Info}) ->
   Reply = handle_continue(Info, State),
   rpc_request(Reply);
 rpc_request({reply, Reply0, State, Info}) ->
-  rpc_reply ! {reply, Reply0},
+  rpc_out ! {reply, Reply0},
   Reply = handle_continue(Info, State),
   rpc_request(Reply).
 
-
-rpc_reply(noargs) ->
-  rpc_reply(#{});
-rpc_reply(State) ->
-  receive
-    {reply, Msg} ->
-      Reply = json:encode(Msg),
-      io:format("~s~n", [Reply]),
-      rpc_reply(State)
-  end.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
@@ -246,6 +241,18 @@ reply(Dest, Body, State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
+
+append(start, {Msg, MsgId}) ->
+  {_, NodeId, #{<<"key">> := Key}} = Msg,
+  Reply = #{
+    <<"src">> => NodeId,
+    <<"dest">> => <<"lin-kv">>,
+    <<"body">> => #{
+      <<"type">>   => <<"read">>,
+      <<"key">>    => Key,
+      <<"msg_id">> => MsgId
+  }},
+  {MsgId, Reply, Msg}.
 
 read(Offsets, Logs) ->
   maps:fold(fun (K, From, AccIn) ->
