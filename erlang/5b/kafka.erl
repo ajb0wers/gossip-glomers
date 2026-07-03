@@ -150,7 +150,8 @@ handle_append({append, Msg}, State) ->
 handle_append({cas, Msg}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {_, _, #{<<"key">> := Key}} = Msg,
-  N = 1, Value = 0, To = Value + N,
+  Value = 0,
+  N = 1, To = Value + N,
 
   Callbacks0 = State#state.append_id,
   Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Msg}}},
@@ -165,9 +166,9 @@ handle_append({cas, Msg}, State) ->
     <<"create_if_not_exists">> => true
   }, NewState);
 handle_append({{~"read_ok", ~"lin-kv" = Src, Dest, Body}, Info}, State) ->
-  #{~"value" := Value} = Body,
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {_,_, #{<<"key">> := Key}} = Info,
+  #{~"value" := Value} = Body,
   N = 1, To = Value + N,
 
   Callbacks0 = State#state.append_id,
