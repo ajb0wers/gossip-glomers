@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([init/1]).
+-export([init/1, handle_append/2]).
 
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
