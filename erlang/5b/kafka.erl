@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([rpc_request/1, rpc_out/0]).
+-export([init/1]).
 
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
@@ -19,62 +19,57 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-  register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
-  register(rpc_out, spawn_link(rpc_out)),
+  spawn(?MODULE, init, [server]),
+  spawn(?MODULE, init, [rpcout]),
   loop(standard_io).
+
+init(rpcout) -> 
+  register(rpcout, self()),
+  rpcout();
+init(server) ->
+  register(server, self()),
+  server(fun handle_msg/2, #state{}).
 
 loop(standard_io) -> 
   case io:get_line([]) of
     eof -> ok;
     {error, Reason} -> exit(Reason);
     Line ->
-      rpc_request ! {line, Line},
+      server ! {line, Line},
       loop(standard_io)
   end.
 
-rpc_out() ->
+rpcout() ->
   receive
-    {reply, Msg} ->
+    Msg ->
       Reply = json:encode(Msg),
       io:format("~s~n", [Reply]),
-      rpc_out()
+      rpcout()
   end.
 
-rpc_request(noargs) ->
-  rpc_request(#state{});
-rpc_request(#state{} = State) ->
+server(Fn, State) ->
   receive 
     {line, Line} ->
-      Reply = handle_line(Line, State),
-      rpc_request(Reply);
-    _Other ->
-      rpc_request(State)
-  end;
-rpc_request({ok, State}) ->
-  rpc_request(State);
-rpc_request({reply, Reply, State}) ->
-  rpc_out ! {reply, Reply},
-  rpc_request(State);
-rpc_request({noreply, State, Info}) ->
+      Msg = parse_line(Line),
+      Reply = Fn(Msg, State),
+      handle_reply(Fn, Reply);
+    Msg ->
+      Reply = Fn(Msg, State),
+      handle_reply(Fn, Reply)
+  end.
+
+handle_reply(Fn, {ok, State}) ->
+  server(Fn, State);
+handle_reply(Fn, {reply, Reply, State}) ->
+  rpcout ! Reply,
+  server(Fn, State);
+handle_reply(Fn, {noreply, State, Info}) ->
   Reply = handle_continue(Info, State),
-  rpc_request(Reply);
-rpc_request({reply, Reply0, State, Info}) ->
-  rpc_out ! {reply, Reply0},
+  handle_reply(Fn, Reply);
+handle_reply(Fn, {reply, Reply0, State, Info}) ->
+  rpcout ! Reply0,
   Reply = handle_continue(Info, State),
-  rpc_request(Reply).
-
-
-parse_line(Line) ->
-  Msg = json:decode(Line),
-  #{<<"src">> := Src,
-    <<"dest">> := Dest,
-    <<"body">> := Body} = Msg,
-  #{<<"type">> := Type} = Body,
-  {Type, Src, Dest, Body}.
-
-handle_line(Line, State) -> 
-  Msg = parse_line(Line),
-  handle_msg(Msg, State).
+  handle_reply(Fn, Reply).
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
@@ -95,38 +90,46 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
 handle_msg({~"send", Src, Dest, Body}, State) ->
   handle_append({append, {Src,Dest,Body}}, State);
 
-handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
-  #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
+%% handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
+%%   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
+%% 
+%%   Msgs = read(Offsets, Logs),
+%% 
+%%   reply(Src, Dest, #{
+%%     <<"type">> => <<"poll_ok">>,
+%%     <<"msgs">> => Msgs,
+%%     <<"in_reply_to">> => MsgId
+%%   }, State);
+%% 
+%% handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
+%%   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
+%% 
+%%   NewData = commit(Offsets, Data),
+%%   NewState = State#state{data=NewData},
+%% 
+%%   reply(Src, Dest, #{
+%%     <<"type">> => <<"commit_offsets_ok">>,
+%%     <<"in_reply_to">> => MsgId
+%%   }, NewState);
+%% 
+%% handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
+%%   #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
+%% 
+%%   Offsets = list(Ks, State#state.data),
+%% 
+%%   reply(Src, Dest, #{
+%%     <<"type">> => <<"list_committed_offsets_ok">>,
+%%     <<"offsets">> => Offsets,
+%%     <<"in_reply_to">> => MsgId
+%%   }, State);
+%% 
 
-  Msgs = read(Offsets, Logs),
-
-  reply(Src, Dest, #{
-    <<"type">> => <<"poll_ok">>,
-    <<"msgs">> => Msgs,
-    <<"in_reply_to">> => MsgId
-  }, State);
-
-handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
-  #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
-
-  NewData = commit(Offsets, Data),
-  NewState = State#state{data=NewData},
-
-  reply(Src, Dest, #{
-    <<"type">> => <<"commit_offsets_ok">>,
-    <<"in_reply_to">> => MsgId
-  }, NewState);
-
-handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
-  #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
-
-  Offsets = list(Ks, State#state.data),
-
-  reply(Src, Dest, #{
-    <<"type">> => <<"list_committed_offsets_ok">>,
-    <<"offsets">> => Offsets,
-    <<"in_reply_to">> => MsgId
-  }, State);
+handle_msg({xyz, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
+  #{ReplyId := {Fun, CallbackInfo}} = State#state.append_id, 
+  Callbacks0 = State#state.append_id,
+  Callbacks = maps:remove(ReplyId, Callbacks0),
+  NewState = State#state{append_id=Callbacks},
+  Fun({Msg, CallbackInfo}, NewState);
 
 handle_msg({~"read_ok", ~"lin-kv", _Dest, Body} = Msg, State) ->
   #{~"in_reply_to" := ReplyId} = Body,
@@ -241,41 +244,48 @@ reply(Dest, Body, State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
+parse_line(Line) ->
+  Msg = json:decode(Line),
+  #{<<"src">> := Src,
+    <<"dest">> := Dest,
+    <<"body">> := Body} = Msg,
+  #{<<"type">> := Type} = Body,
+  {Type, Src, Dest, Body}.
 
-append(start, {Msg, MsgId}) ->
-  {_, NodeId, #{<<"key">> := Key}} = Msg,
-  Reply = #{
-    <<"src">> => NodeId,
-    <<"dest">> => <<"lin-kv">>,
-    <<"body">> => #{
-      <<"type">>   => <<"read">>,
-      <<"key">>    => Key,
-      <<"msg_id">> => MsgId
-  }},
-  {MsgId, Reply, Msg}.
-
-read(Offsets, Logs) ->
-  maps:fold(fun (K, From, AccIn) ->
-    case Logs of 
-      #{K := {_Length, _Commit, Log}} ->
-        %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
-        Pred = fun({I,_}) -> I >= From end,
-        List = lists:takewhile(Pred, Log),
-        Queue = lists:reverse([[I,H] || {I,H} <- List]),
-        AccIn#{K => Queue};
-      _NoMatch -> AccIn
-    end
-  end, #{}, Offsets).
-
-commit(Offsets, Logs) ->
-  maps:fold(fun (K, End, AccIn) -> 
-    case Logs of
-      #{K := {Offset, Commit, Log}} when End > Commit ->
-        AccIn#{K := {Offset, End, Log}};
-      _ -> AccIn
-    end
-  end, Logs, Offsets).
-
-list(Keys, Logs) ->
-  Map = maps:with(Keys, Logs),
-  #{K => Commit || K := {_,Commit,_} <- Map}.
+%% append(start, {Msg, MsgId}) ->
+%%   {_, NodeId, #{<<"key">> := Key}} = Msg,
+%%   Reply = #{
+%%     <<"src">> => NodeId,
+%%     <<"dest">> => <<"lin-kv">>,
+%%     <<"body">> => #{
+%%       <<"type">>   => <<"read">>,
+%%       <<"key">>    => Key,
+%%       <<"msg_id">> => MsgId
+%%   }},
+%%   {MsgId, Reply, Msg}.
+%% 
+%% read(Offsets, Logs) ->
+%%   maps:fold(fun (K, From, AccIn) ->
+%%     case Logs of 
+%%       #{K := {_Length, _Commit, Log}} ->
+%%         %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
+%%         Pred = fun({I,_}) -> I >= From end,
+%%         List = lists:takewhile(Pred, Log),
+%%         Queue = lists:reverse([[I,H] || {I,H} <- List]),
+%%         AccIn#{K => Queue};
+%%       _NoMatch -> AccIn
+%%     end
+%%   end, #{}, Offsets).
+%% 
+%% commit(Offsets, Logs) ->
+%%   maps:fold(fun (K, End, AccIn) -> 
+%%     case Logs of
+%%       #{K := {Offset, Commit, Log}} when End > Commit ->
+%%         AccIn#{K := {Offset, End, Log}};
+%%       _ -> AccIn
+%%     end
+%%   end, Logs, Offsets).
+%% 
+%% list(Keys, Logs) ->
+%%   Map = maps:with(Keys, Logs),
+%%   #{K => Commit || K := {_,Commit,_} <- Map}.
