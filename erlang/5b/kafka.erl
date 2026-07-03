@@ -69,7 +69,9 @@ handle_reply(Fn, {noreply, State, Info}) ->
 handle_reply(Fn, {reply, Reply0, State, Info}) ->
   rpcout ! Reply0,
   Reply = handle_continue(Info, State),
-  handle_reply(Fn, Reply).
+  handle_reply(Fn, Reply);
+handle_reply(_Fn, stop) ->
+  ok.
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
@@ -87,7 +89,7 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
   }, NewState);
 
 
-handle_msg({~"send", Src, Dest, Body}, State) ->
+handle_msg({~"send", Src, Dest, Body} = _Msg, State) ->
   handle_append({append, {Src,Dest,Body}}, State);
 
 %% handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
@@ -124,49 +126,22 @@ handle_msg({~"send", Src, Dest, Body}, State) ->
 %%   }, State);
 %% 
 
-handle_msg({xyz, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
-  #{ReplyId := {Fun, CallbackInfo}} = State#state.append_id, 
+handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
+  #{ReplyId := {F, CallbackInfo}} = State#state.append_id, 
   Callbacks0 = State#state.append_id,
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{append_id=Callbacks},
-  Fun({Msg, CallbackInfo}, NewState);
-
-handle_msg({~"read_ok", ~"lin-kv", _Dest, Body} = Msg, State) ->
-  #{~"in_reply_to" := ReplyId} = Body,
-  #{ReplyId := CallbackInfo} = State#state.append_id,
-  Callbacks0 = State#state.append_id,
-  Callbacks = maps:remove(ReplyId, Callbacks0),
-  NewState = State#state{append_id=Callbacks},
-  handle_append({Msg, CallbackInfo}, NewState);
-handle_msg({~"cas_ok", ~"lin-kv", _Dest, Body} = Msg, State) ->
-  #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := CallbackInfo} = State#state.append_id,
-  Callbacks0 = State#state.append_id,
-  Callbacks = maps:remove(ReplyId, Callbacks0),
-  NewState = State#state{append_id=Callbacks},
-  handle_append({Msg, CallbackInfo}, NewState);
-handle_msg({~"write_ok", ~"seq-kv", _, Body} = Msg, State) ->
-  #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := CallbackInfo} = State#state.append_id,
-  Callbacks0 = State#state.append_id,
-  Callbacks = maps:remove(ReplyId, Callbacks0),
-  NewState = State#state{append_id=Callbacks},
-  handle_append({Msg, CallbackInfo}, NewState);
-handle_msg({~"error", ~"lin-kv", _Dest, Body} = Msg, State) ->
-  #{<<"in_reply_to">> := ReplyId} = Body,
-  #{ReplyId := CallbackInfo} = State#state.append_id,
-  Callbacks0 = State#state.append_id,
-  Callbacks = maps:remove(ReplyId, Callbacks0),
-  NewState = State#state{append_id=Callbacks},
-  handle_append({Msg, CallbackInfo}, NewState);
+  erlang:apply(?MODULE, F, [{Msg, CallbackInfo}, NewState]);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_continue(_Info, State) -> {ok, State}.
 
-handle_append({append, Msg}, #state{append_id=Callbacks} = State) ->
+handle_append({append, Msg}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {_, _, #{<<"key">> := Key}} = Msg,
-  NewState = State#state{append_id=Callbacks#{MsgId => Msg}},
+  Callbacks0 = State#state.append_id,
+  Callbacks = Callbacks0#{MsgId => {handle_append, Msg}},
+  NewState = State#state{append_id=Callbacks},
   reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
@@ -176,8 +151,11 @@ handle_append({cas, Msg}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {_, _, #{<<"key">> := Key}} = Msg,
   N = 1, Value = 0, To = Value + N,
+
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {{Key, Value, To, N}, Msg}},
+  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Msg}}},
+  NewState = State#state{append_id=Callbacks},
+
   reply(~"lin-kv", #{
     <<"type">> => <<"cas">>,
     <<"key">> => Key,
@@ -185,15 +163,15 @@ handle_append({cas, Msg}, State) ->
     <<"to">> => To,
     <<"create_if_not_exists">> => true,
     <<"msg_id">> => MsgId
-  }, State#state{append_id=Callbacks});
+  }, NewState);
 handle_append({{~"read_ok", ~"lin-kv" = Src, Dest, Body}, Info}, State) ->
-  #{~"value" := Value, ~"in_reply_to" := _ReplyId} = Body,
+  #{~"value" := Value} = Body,
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {_,_, #{<<"key">> := Key}} = Info,
   N = 1, To = Value + N,
 
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {{Key, Value, To, N}, Info}},
+  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Info}}},
   NewState = State#state{append_id=Callbacks},
 
   reply(Src, Dest, #{
@@ -210,7 +188,7 @@ handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   {_,_, #{<<"msg">> := Value}} = Msg,
 
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {{Key, Value, To}, Msg}},
+  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key, Value, To}, Msg}}},
   NewState = State#state{append_id=Callbacks},
 
   reply(~"seq-kv", Dest, #{
@@ -219,6 +197,12 @@ handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
+handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
+  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
+  handle_append({cas, Info}, State); %% read_ok
+handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
+  when map_get(~"code", Body) == ?PRECONDITION_FAILED ->
+  handle_append({append, Info}, State);
 handle_append({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{_, _, Offset}, Msg} = Info,
   {Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
@@ -226,13 +210,7 @@ handle_append({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
     <<"type">> => <<"send_ok">>,
     <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
-  }, State);
-handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
-  handle_append({cas, Info}, State);
-handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when map_get(~"code", Body) == ?PRECONDITION_FAILED ->
-  handle_append({append, Info}, State).
+  }, State).
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
