@@ -52,25 +52,25 @@ server(Fn, State) ->
     {line, Line} ->
       Msg = parse_line(Line),
       Reply = Fn(Msg, State),
-      handle_reply(Fn, Reply);
+      server_reply(Fn, Reply);
     Msg ->
       Reply = Fn(Msg, State),
-      handle_reply(Fn, Reply)
+      server_reply(Fn, Reply)
   end.
 
-handle_reply(Fn, {ok, State}) ->
+server_reply(Fn, {ok, State}) ->
   server(Fn, State);
-handle_reply(Fn, {reply, Reply, State}) ->
+server_reply(Fn, {reply, Reply, State}) ->
   rpcout ! Reply,
   server(Fn, State);
-handle_reply(Fn, {noreply, State, Info}) ->
+server_reply(Fn, {noreply, State, Info}) ->
   Reply = handle_continue(Info, State),
-  handle_reply(Fn, Reply);
-handle_reply(Fn, {reply, Reply0, State, Info}) ->
+  server_reply(Fn, Reply);
+server_reply(Fn, {reply, Reply0, State, Info}) ->
   rpcout ! Reply0,
   Reply = handle_continue(Info, State),
-  handle_reply(Fn, Reply);
-handle_reply(_Fn, stop) ->
+  server_reply(Fn, Reply);
+server_reply(_Fn, stop) ->
   ok.
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
@@ -136,46 +136,34 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_continue(_Info, State) -> {ok, State}.
 
-handle_append({append, Msg}, State) ->
+handle_append({append, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {_, _, #{<<"key">> := Key}} = Msg,
+  {_, _, #{<<"key">> := Key}} = Send,
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {handle_append, Msg}},
+  Callbacks = Callbacks0#{MsgId => {handle_append, Send}},
   NewState = State#state{append_id=Callbacks},
   reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_append({cas, Msg}, State) ->
+handle_append({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
+  #{~"value" := Value} = Body,
+  handle_append({cas, Value, Send}, State);
+handle_append({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
+  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
+  %% TODO: lin-kv read `in_reply_to=msg_id`.
+  handle_append({cas, 0, Send}, State);
+handle_append({cas, Value, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {_, _, #{<<"key">> := Key}} = Msg,
-  Value = 0,
+  {_, _, #{<<"key">> := Key}} = Send,
   N = 1, To = Value + N,
 
   Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Msg}}},
+  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Send}}},
   NewState = State#state{append_id=Callbacks},
 
   reply(~"lin-kv", #{
-    <<"type">>   => <<"cas">>,
-    <<"key">>    => Key,
-    <<"from">>   => Value,
-    <<"to">>     => To,
-    <<"msg_id">> => MsgId,
-    <<"create_if_not_exists">> => true
-  }, NewState);
-handle_append({{~"read_ok", ~"lin-kv" = Src, Dest, Body}, Info}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
-  {_,_, #{<<"key">> := Key}} = Info,
-  #{~"value" := Value} = Body,
-  N = 1, To = Value + N,
-
-  Callbacks0 = State#state.append_id,
-  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,To,N}, Info}}},
-  NewState = State#state{append_id=Callbacks},
-
-  reply(Src, Dest, #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => Key,
     <<"from">>   => Value,
@@ -198,9 +186,6 @@ handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
-  handle_append({cas, Info}, State); %% read_ok
 handle_append({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when map_get(~"code", Body) == ?PRECONDITION_FAILED ->
   handle_append({append, Info}, State);
