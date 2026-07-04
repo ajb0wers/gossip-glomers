@@ -206,8 +206,10 @@ handle_append({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
 
 handle_poll({~"poll", _Src, _Dest, _Body} = _Msg, State) -> 
   %% #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
+  %% I = maps:iterator(Offsets),
+  %% Info = {I, Offsets, Msg},
   %% Callbacks0 = State#state.callbacks,
-  %% Callbacks = Callbacks0#{MsgId => {handle_poll, {Offset, Msg}},
+  %% Callbacks = Callbacks0#{MsgId => {handle_poll, Info},
   %% NewState = State#state{callbacks=Callbacks},
   {ok, State}. 
 
