@@ -26,8 +26,24 @@ kafka() {
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":10,"type":"read_ok","value":1001}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":11,"type":"cas_ok"}}'
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":12,"type":"write_ok"}}'
-  
-  # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":6,"type":"poll","offsets":{"k1":2,"k2":1}}}'
+
+  # seq-kv
+  # k1 9 5
+  # k2 7 2
+
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":13,"type":"poll","offsets":{"k1":2,"k2":1}}}'
+  # {"body":{"key":["k1",2],"msg_id":13,"type":"read"},"dest":"seq-kv","src":"n1"}
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":13,"type":"read_ok","value":5}}'
+  # {"body":{"key":["k1",3],"msg_id":14,"type":"read"},"dest":"seq-kv","src":"n1"}
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":14,"type":"error","code":20}}'
+  # {"body":{"key":["k2",1],"msg_id":15,"type":"read"},"dest":"seq-kv","src":"n1"} 
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":15,"type":"read_ok","value":7}}'
+  # {"body":{"key":["k2",2],"msg_id":16,"type":"read"},"dest":"seq-kv","src":"n1"}
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":16,"type":"read_ok","value":2}}'
+  # {"body":{"key":["k2",3],"msg_id":17,"type":"read"},"dest":"seq-kv","src":"n1"}
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":17,"type":"error","code":20}}'
+
+
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":7,"type":"commit_offsets","offsets":{"k1":1,"k2":2}}}'
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":8,"type":"list_committed_offsets","keys":["k1","k2"]}}'
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":9,"type":"poll","offsets":{"k1":2,"k2":2}}}'

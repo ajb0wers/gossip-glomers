@@ -6,6 +6,10 @@
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
 
+-define(RPC_ERR_CODE(Code, Body), map_get(~"code", Body) == Code).
+-define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR_CODE(?KEY_DOES_NOT_EXIST, Body)).
+-define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR_CODE(?PRECONDITION_FAILED, Body)).
+
 -record(state, {
   node_id   = null :: 'null' | binary(),
   node_ids  = []   :: [binary()],
@@ -154,13 +158,13 @@ handle_append({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
   #{~"value" := Value} = Body,
   handle_append({cas, Value, Send}, State);
 handle_append({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
-  when map_get(~"code", Body) == ?KEY_DOES_NOT_EXIST ->
+  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   handle_append({cas, 0, Send}, State);
 handle_append({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {_, _, #{<<"key">> := Key}} = Send,
+  {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
 
   Callbacks0 = State#state.callbacks,
@@ -178,7 +182,7 @@ handle_append({cas, From, Send}, State) ->
 handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _, Offset, _N}, Msg} = Info,
-  {_,_, #{<<"msg">> := Value}} = Msg,
+  {~"send", _,_, #{<<"msg">> := Value}} = Msg,
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,Offset}, Msg}}},
@@ -191,29 +195,57 @@ handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"msg_id">> => MsgId
   }, NewState);
 handle_append({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
-  when map_get(~"code", Body) == ?PRECONDITION_FAILED ->
+  when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
   handle_append(Send, State);
 handle_append({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{_, _, Offset}, Msg} = Info,
-  {Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
     <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
   }, State).
 
-handle_poll({~"poll", _Src, _Dest, _Body} = _Msg, State) -> 
-  %% #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
-  %% I = maps:iterator(Offsets),
-  %% Info = {I, Offsets, Msg},
-  %% Callbacks0 = State#state.callbacks,
-  %% Callbacks = Callbacks0#{MsgId => {handle_poll, Info},
-  %% NewState = State#state{callbacks=Callbacks},
-  {ok, State}. 
+handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
+  #{<<"offsets">> := Offsets} = Body,
+  PollInfo = {maps:to_list(Offsets), #{}, Msg},
+  %% TODO: link-kv read to get the tail offset.
+  handle_poll({seq_read, PollInfo}, State);
+handle_poll({seq_read, {[Log|_], _, _Msg} = PollInfo}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  {Key, Offset} = Log,
 
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_poll, PollInfo}},
+  NewState = State#state{callbacks=Callbacks},
 
+  reply(~"seq-kv", #{
+    <<"type">>   => <<"read">>,
+    <<"key">>    => [Key,Offset],
+    <<"msg_id">> => MsgId
+  }, NewState);
+handle_poll({seq_read, {[], Msgs, Msg}}, State) ->
+  {~"poll", Src, _Dest, _Body} = Msg,
+  reply(Src, #{
+    <<"type">> => <<"poll_ok">>,
+    <<"msgs">> => Msgs
+  }, State);
+handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
+  #{~"value" := Value} = Body,
+  {Logs0, Data0, Msg} = PollInfo, 
+  [{Key, Offset}|Ls]  = Logs0,
+  List = maps:get(Key, Data0, []),
+  Data = Data0#{Key => [[Offset, Value] | List]},
+  Logs = [{Key,Offset+1}|Ls],
+  handle_poll({seq_read, {Logs, Data, Msg}}, State);
+handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
+  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+  {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
+  #{Key := List}  = Data0,
+  Data = Data0#{Key => lists:reverse(List)}, 
+  handle_poll({seq_read, {Logs, Data, Msg}}, State).
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
