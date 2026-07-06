@@ -18,20 +18,19 @@ kafka() {
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":6,"type":"write_ok"}}'
   
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":7,"type":"send","key":"k2","msg":7}}'
-  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":7,"type":"read_ok","value":1001}}'
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":7,"type":"read_ok","value":1999}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":8,"type":"cas_ok"}}'
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":9,"type":"write_ok"}}'
   
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":10,"type":"send","key":"k2","msg":2}}'
-  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":10,"type":"read_ok","value":1001}}'
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":10,"type":"read_ok","value":2000}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":11,"type":"cas_ok"}}'
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":12,"type":"write_ok"}}'
 
-  # seq-kv
-  # k1 9 5
-  # k2 7 2
+  # k1: [[1,9],[1001,5]]
+  # k2: [[2000,7],[2001,2]]
 
-  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":13,"type":"poll","offsets":{"k1":2,"k2":1}}}'
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":13,"type":"poll","offsets":{"k1":1001,"k2":2000}}}'
   # {"body":{"key":["k1",2],"msg_id":13,"type":"read"},"dest":"seq-kv","src":"n1"}
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":13,"type":"read_ok","value":5}}'
   # {"body":{"key":["k1",3],"msg_id":14,"type":"read"},"dest":"seq-kv","src":"n1"}
@@ -42,7 +41,8 @@ kafka() {
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":16,"type":"read_ok","value":2}}'
   # {"body":{"key":["k2",3],"msg_id":17,"type":"read"},"dest":"seq-kv","src":"n1"}
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":17,"type":"error","code":20}}'
-
+  # {"body":{"msgs":{"k1":[[1001,5]],"k2":[[2000,7],[2001,2]]},"type":"poll_ok"},"dest":"c1","src":"n1"}
+ 
 
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":7,"type":"commit_offsets","offsets":{"k1":1,"k2":2}}}'
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":8,"type":"list_committed_offsets","keys":["k1","k2"]}}'

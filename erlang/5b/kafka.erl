@@ -1,19 +1,24 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([init/1, handle_append/2, handle_poll/2]).
+-export([
+  init/1,
+  handle_send/2,
+  handle_poll/2
+ ]).
 
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
 
 -define(RPC_ERR_CODE(Code, Body), map_get(~"code", Body) == Code).
--define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR_CODE(?KEY_DOES_NOT_EXIST, Body)).
--define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR_CODE(?PRECONDITION_FAILED, Body)).
+-define(RPC_KEY_DOES_NOT_EXIST(Body),
+  ?RPC_ERR_CODE(?KEY_DOES_NOT_EXIST, Body)).
+-define(RPC_PRECONDITION_FAILED(Body),
+  ?RPC_ERR_CODE(?PRECONDITION_FAILED, Body)).
 
 -record(state, {
   node_id   = null :: 'null' | binary(),
   node_ids  = []   :: [binary()],
-  % append_msg = #{} :: #{Key::binary() := Values::list()},
   callbacks = #{} :: #{MsgId::non_neg_integer() := any()},
   data = #{} :: #{Key::binary() := {
                     Length::non_neg_integer(),
@@ -68,14 +73,16 @@ server_reply(Fn, {reply, Reply, State}) ->
   rpcout ! Reply,
   server(Fn, State);
 server_reply(Fn, {noreply, State, Info}) ->
-  Reply = handle_continue(Info, State),
-  server_reply(Fn, Reply);
+  server_continue(Fn, Info, State);
 server_reply(Fn, {reply, Reply0, State, Info}) ->
   rpcout ! Reply0,
-  Reply = handle_continue(Info, State),
-  server_reply(Fn, Reply);
+  server_continue(Fn, Info, State);
 server_reply(_Fn, stop) ->
   ok.
+
+server_continue(Fn, Info, State) ->
+  Reply = Fn(Info, State),
+  server_reply(Fn, Reply).
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
@@ -94,22 +101,17 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
 
 
 handle_msg({~"send", _Src, _Dest, _Body} = Msg, State) ->
-  handle_append(Msg, State);
-
+  handle_send(Msg, State);
 handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
   handle_poll(Msg, State);
+handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
+  #{ReplyId := {F, Data}} = State#state.callbacks, 
+  Callbacks0 = State#state.callbacks,
+  Callbacks = maps:remove(ReplyId, Callbacks0),
+  NewState = State#state{callbacks=Callbacks},
+  erlang:apply(?MODULE, F, [{Msg, Data}, NewState]);
+handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-%% handle_msg({~"poll", Src, Dest, Body}, #state{data=Logs} = State) ->
-%%   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
-%% 
-%%   Msgs = read(Offsets, Logs),
-%% 
-%%   reply(Src, Dest, #{
-%%     <<"type">> => <<"poll_ok">>,
-%%     <<"msgs">> => Msgs,
-%%     <<"in_reply_to">> => MsgId
-%%   }, State);
-%% 
 %% handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
 %%   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
 %% 
@@ -133,42 +135,33 @@ handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
 %%   }, State);
 %% 
 
-handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
-  #{ReplyId := {F, CallbackInfo}} = State#state.callbacks, 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = maps:remove(ReplyId, Callbacks0),
-  NewState = State#state{callbacks=Callbacks},
-  erlang:apply(?MODULE, F, [{Msg, CallbackInfo}, NewState]);
-handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_continue(_Info, State) -> {ok, State}.
-
-handle_append({~"send", _, _, Body} = Send, State) ->
+handle_send({~"send", _, _, Body} = Send, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   #{<<"key">> := Key} = Body,
   Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_append, Send}},
+  Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
   NewState = State#state{callbacks=Callbacks},
   reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_append({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
+handle_send({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
   #{~"value" := Value} = Body,
-  handle_append({cas, Value, Send}, State);
-handle_append({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
+  handle_send({cas, Value, Send}, State);
+handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_append({cas, 0, Send}, State);
-handle_append({cas, From, Send}, State) ->
+  handle_send({cas, 0, Send}, State);
+handle_send({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
 
   Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,From,Offset,N}, Send}}},
+  Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,From,Offset,N}, Send}}},
   NewState = State#state{callbacks=Callbacks},
 
   reply(~"lin-kv", #{
@@ -179,13 +172,13 @@ handle_append({cas, From, Send}, State) ->
     <<"msg_id">> => MsgId,
     <<"create_if_not_exists">> => true
   }, NewState);
-handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
+handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
 
   Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_append, {{Key,Value,Offset}, Msg}}},
+  Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
   NewState = State#state{callbacks=Callbacks},
 
   reply(~"seq-kv", Dest, #{
@@ -194,12 +187,12 @@ handle_append({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_append({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
+handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_append(Send, State);
-handle_append({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
+  handle_send(Send, State);
+handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{_, _, Offset}, Msg} = Info,
   {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, Dest, #{
