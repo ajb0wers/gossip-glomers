@@ -47,6 +47,7 @@ kafka() {
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":7,"type":"commit_offsets","offsets":{"k1":1,"k2":2}}}'
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":8,"type":"list_committed_offsets","keys":["k1","k2"]}}'
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":9,"type":"poll","offsets":{"k1":2,"k2":2}}}'
+
   cat -
 } 
 

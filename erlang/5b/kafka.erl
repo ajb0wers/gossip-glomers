@@ -1,12 +1,10 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([
-  init/1,
-  handle_send/2,
-  handle_poll/2
- ]).
+-export([init/1, handle_send/2, handle_poll/2, handle_commit/2]).
 
+-define(CRASH, 13).
+-define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
 
@@ -239,6 +237,60 @@ handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
   #{Key := List}  = Data0,
   Data = Data0#{Key => lists:reverse(List)}, 
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
+
+
+handle_commit({~"commit_offsets", _Src, _Dest, Body} = Msg, State) ->
+  #{<<"offsets">> := Offsets} = Body,
+  Info = {maps:to_list(Offsets), Msg},
+  handle_commit({lin_read, Info}, State);
+handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  {Key, _Offset} = Log,
+
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
+  NewState = State#state{callbacks=Callbacks},
+
+  reply(~"lin-kv", #{
+    <<"type">>   => <<"read">>,
+    <<"key">>    => [<<"commit_offset">>,Key],
+    <<"msg_id">> => MsgId
+  }, NewState);
+handle_commit({lin_read, {[], Msg} = _Info}, State) ->
+  {~"commit_offsets", Src, _Dest, _Body} = Msg,
+  reply(Src, #{<<"type">> => <<"commit_offsets_ok">>}, State);
+handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
+  #{~"value" := Value} = Body,
+  {[{_Key,Offset}|Logs], Msg} = Info, 
+  if
+    Offset > Value -> handle_commit({cas, Value, Info}, State);
+    true -> handle_commit({lin_read, {Logs, Msg}}, State)
+  end;
+handle_commit({cas, From, Info}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  {Logs, _Msg} = Info,
+  [{Key, Offset}|_] = Logs,
+
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
+  NewState = State#state{callbacks=Callbacks},
+
+  reply(~"lin-kv", #{
+    <<"type">>   => <<"cas">>,
+    <<"key">>    => [<<"commit_offset">>, Key],
+    <<"from">>   => From,
+    <<"to">>     => Offset,
+    <<"msg_id">> => MsgId,
+    <<"create_if_not_exists">> => true
+  }, NewState);
+handle_commit({{~"cas_ok", _Src, _Dest, _Body}, _Info}, State) ->
+  {ok, State};
+handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
+  when ?RPC_PRECONDITION_FAILED(Body) ->
+  %% handle lin-kv rpc cas error (22) when from value doesn't match.
+  handle_commit({lin_read, Info}, State).
+
+
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
