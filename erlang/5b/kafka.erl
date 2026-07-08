@@ -102,6 +102,8 @@ handle_msg({~"send", _Src, _Dest, _Body} = Msg, State) ->
   handle_send(Msg, State);
 handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
   handle_poll(Msg, State);
+handle_msg({~"commit_offsets", _Src, _Dest, _Body} = Msg, State) ->
+  handle_commit(Msg, State);
 handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {F, Data}} = State#state.callbacks, 
   Callbacks0 = State#state.callbacks,
@@ -266,6 +268,11 @@ handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
     Offset > Value -> handle_commit({cas, Value, Info}, State);
     true -> handle_commit({lin_read, {Logs, Msg}}, State)
   end;
+handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
+  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+  %% handle link-kv rpc read error (20) when key doesn't exist.
+  %% TODO: expect `in_reply_to=msg_id`.
+  handle_send({cas, 0, Info}, State);
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {Logs, _Msg} = Info,
