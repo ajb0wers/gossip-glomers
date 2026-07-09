@@ -226,6 +226,7 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
+  %% TODO: case Data0 of {}; or maps:get_or_default = []
   #{Key := List}  = Data0,
   Data = Data0#{Key => lists:reverse(List)}, 
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
