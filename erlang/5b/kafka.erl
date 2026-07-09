@@ -104,6 +104,8 @@ handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
   handle_poll(Msg, State);
 handle_msg({~"commit_offsets", _Src, _Dest, _Body} = Msg, State) ->
   handle_commit(Msg, State);
+handle_msg({~"list_committed_offsets", _Src, _Dest, _Body} = Msg, State) ->
+  handle_list(Msg, State);
 handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {F, Data}} = State#state.callbacks, 
   Callbacks0 = State#state.callbacks,
@@ -112,17 +114,6 @@ handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   erlang:apply(?MODULE, F, [{Msg, Data}, NewState]);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-%% handle_msg({~"commit_offsets", Src, Dest, Body}, #state{data=Data} = State) ->
-%%   #{<<"offsets">> := Offsets, <<"msg_id">> := MsgId} = Body,
-%% 
-%%   NewData = commit(Offsets, Data),
-%%   NewState = State#state{data=NewData},
-%% 
-%%   reply(Src, Dest, #{
-%%     <<"type">> => <<"commit_offsets_ok">>,
-%%     <<"in_reply_to">> => MsgId
-%%   }, NewState);
-%% 
 %% handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
 %%   #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
 %% 
@@ -220,10 +211,11 @@ handle_poll({seq_read, {[Log|_], _, _Msg} = PollInfo}, State) ->
     <<"msg_id">> => MsgId
   }, NewState);
 handle_poll({seq_read, {[], Msgs, Msg}}, State) ->
-  {~"poll", Src, _Dest, _Body} = Msg,
+  {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
     <<"type">> => <<"poll_ok">>,
-    <<"msgs">> => Msgs
+    <<"msgs">> => Msgs,
+    <<"in_reply_to">> => MsgId
   }, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   #{~"value" := Value} = Body,
@@ -259,8 +251,11 @@ handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
     <<"msg_id">> => MsgId
   }, NewState);
 handle_commit({lin_read, {[], Msg} = _Info}, State) ->
-  {~"commit_offsets", Src, _Dest, _Body} = Msg,
-  reply(Src, #{<<"type">> => <<"commit_offsets_ok">>}, State);
+  {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  reply(Src, #{
+    <<"type">> => <<"commit_offsets_ok">>, 
+    <<"in_reply_to">> => MsgId
+  }, State);
 handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
   {[{_Key,Offset}|Logs], Msg} = Info, 
@@ -290,13 +285,21 @@ handle_commit({cas, From, Info}, State) ->
     <<"msg_id">> => MsgId,
     <<"create_if_not_exists">> => true
   }, NewState);
-handle_commit({{~"cas_ok", _Src, _Dest, _Body}, _Info}, State) ->
-  {ok, State};
+handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
+  {[_|Logs], Msg}  = Info,
+  handle_commit({lin_read, {Logs, Msg}}, State);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
+handle_list({~"list_committed_offsets", _Src, _Dest, Body}, State) ->
+  %% #{<<"keys">> := Keys, <<"msg_id">> := MsgId} = Body,
+  %% loop keys 
+  %%   read lin-kv [commit_offset,key]
+  %%   loop seq-kv 
+  %%     read seq-kv offset--
+  {ok, State}.
 
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->

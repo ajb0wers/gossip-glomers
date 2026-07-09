@@ -47,11 +47,12 @@ kafka() {
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":18,"type":"read_ok","value":0}}'
   # {"body":{"create_if_not_exists":true,"from":0,"key":["commit_offset","k1"],"msg_id":19,"to":1,"type":"cas"},"dest":"lin-kv","src":"n1"}
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":19,"type":"cas_ok"}}'
- 
-  
+  # {"body":{"key":["commit_offset","k2"],"msg_id":20,"type":"read"},"dest":"lin-kv","src":"n1"} 
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":20,"type":"read_ok","value":0}}'
+  # {"body":{"create_if_not_exists":true,"from":0,"key":["commit_offset","k2"],"msg_id":21,"to":2000,"type":"cas"},"dest":"lin-kv","src":"n1"} 
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":21,"type":"cas_ok"}}'
   
   # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":8,"type":"list_committed_offsets","keys":["k1","k2"]}}'
-  # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":9,"type":"poll","offsets":{"k1":2,"k2":2}}}'
 
   cat -
 } 
