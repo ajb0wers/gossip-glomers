@@ -1,7 +1,7 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
 
--export([init/1, handle_send/2, handle_poll/2, handle_commit/2]).
+-export([init/1, handle_send/2, handle_poll/2, handle_commit/2, handle_list/2]).
 
 -define(CRASH, 13).
 -define(ABORT, 14).
@@ -26,16 +26,14 @@
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
-  spawn(?MODULE, init, [server]),
-  spawn(?MODULE, init, [rpcout]),
+  ServerPid = spawn_link(?MODULE, init, [server]),
+  RpcOutPid = spawn_link(?MODULE, init, [rpcout]),
+  register(server, ServerPid),
+  register(rpcout, RpcOutPid),
   loop(standard_io).
 
-init(rpcout) -> 
-  register(rpcout, self()),
-  rpcout();
-init(server) ->
-  register(server, self()),
-  server(fun handle_msg/2, #state{}).
+init(rpcout) -> rpcout();
+init(server) -> server(fun handle_msg/2, #state{}).
 
 loop(standard_io) -> 
   case io:get_line([]) of
@@ -293,13 +291,39 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
-handle_list({~"list_committed_offsets", _Src, _Dest, Body}, State) ->
-  %% #{<<"keys">> := Keys, <<"msg_id">> := MsgId} = Body,
-  %% loop keys 
-  %%   read lin-kv [commit_offset,key]
-  %%   loop seq-kv 
-  %%     read seq-kv offset--
-  {ok, State}.
+handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
+  #{<<"keys">> := Keys} = Body,
+  handle_list({read_offsets, {Keys, #{}, Msg}}, State);
+handle_list({read_offsets, {[Key|_], _Offsets, _Msg} = Info}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_list, Info}},
+  NewState = State#state{callbacks=Callbacks},
+
+  reply(~"lin-kv", #{
+    <<"type">>   => <<"read">>,
+    <<"key">>    => [<<"commit_offset">>, Key],
+    <<"msg_id">> => MsgId
+  }, NewState);
+handle_list({read_offsets, {[], Offsets, Msg} = _Info}, State) ->
+  {~"list_committed_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  reply(Src, #{
+    <<"type">> => <<"list_committed_offsets_ok">>, 
+    <<"offsets">> => Offsets,
+    <<"in_reply_to">> => MsgId
+  }, State);
+handle_list({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
+  #{~"value" := Value} = Body,
+  {[Key|Keys], Offsets, Msg} = Info, 
+  NewInfo = {Keys, Offsets#{Key => Value}, Msg},
+  handle_list({read_offsets, NewInfo}, State);
+handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
+  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+  {[Key|Keys], Offsets, Msg} = Info, 
+  NewInfo = {Keys, Offsets#{Key => 0}, Msg},
+  handle_list({read_offsets, NewInfo}, State).
+
 
 
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
