@@ -28,7 +28,7 @@ kafka() {
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":12,"type":"write_ok"}}'
   
 
-  # k1: [[1,9],[1001,5]]
+  # k1: [[0,9],[1001,5]]
   # k2: [[2000,7],[2001,2]]
   printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":13,"type":"poll","offsets":{"k1":1001,"k2":2000}}}'
   # {"body":{"key":["k1",2],"msg_id":13,"type":"read"},"dest":"seq-kv","src":"n1"}
