@@ -176,11 +176,11 @@ handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
+handle_send({{~"error", ~"lin-kv", _Dest, Body}, {_, Msg} = _Send}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_send(Send, State);
+  handle_send(Msg, State);
 handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{_, _, Offset}, Msg} = Info,
   {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
@@ -227,8 +227,12 @@ handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
   %% TODO: case Data0 of {}; or maps:get_or_default = []
-  #{Key := List}  = Data0,
-  Data = Data0#{Key => lists:reverse(List)}, 
+  Data = case Data0 of 
+    #{Key := List} -> Data0#{Key => lists:reverse(List)};
+    _ -> Data0
+  end,
+  %% #{Key := List}  = Data0,
+  %% Data = Data0#{Key => lists:reverse(List)}, 
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
 
 

@@ -26,6 +26,7 @@ kafka() {
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":10,"type":"read_ok","value":2000}}'
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":11,"type":"cas_ok"}}'
   printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":12,"type":"write_ok"}}'
+  
 
   # k1: [[1,9],[1001,5]]
   # k2: [[2000,7],[2001,2]]
@@ -58,6 +59,10 @@ kafka() {
   # {"body":{"key":["commit_offset","k2"],"msg_id":23,"type":"read"},"dest":"lin-kv","src":"n1"}
   printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":23,"type":"read_ok","value":2000}}'
  
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":25,"type":"poll","offsets":{"666":101}}}'
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":24,"type":"error","code":20}}'
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":26,"type":"poll","offsets":{}}}'
+
   cat -
 } 
 
