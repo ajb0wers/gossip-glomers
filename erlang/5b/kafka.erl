@@ -143,7 +143,7 @@ handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_send({cas, 0, Send}, State);
+  handle_send({cas, -1, Send}, State);
 handle_send({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {~"send", _, _, #{<<"key">> := Key}} = Send,
@@ -263,14 +263,14 @@ handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
   {[{_Key,Offset}|Logs], Msg} = Info, 
   if
-    Offset > Value -> handle_commit({cas, Value, Info}, State);
+    Offset >= Value -> handle_commit({cas, Value, Info}, State);
     true -> handle_commit({lin_read, {Logs, Msg}}, State)
   end;
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_send({cas, 0, Info}, State);
+  handle_commit({cas, -1, Info}, State);
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {Logs, _Msg} = Info,
