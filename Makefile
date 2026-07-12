@@ -12,6 +12,7 @@ check:
 	escript -s erlang/4/pn_counter.erl
 	escript -s erlang/5a/kafka.erl
 	escript -s erlang/5b/kafka.erl
+	escript -s erlang/5c/kafka.erl
 
 serve:
 	@cd maelstrom; ./maelstrom serve
@@ -62,6 +63,12 @@ kafka-5b:
 	@echo 'Challenge #5b: Multi-Node Kafka-Style Log'
 	@cd maelstrom; \
 	./maelstrom test -w kafka --bin ../erlang/5b/kafka.erl \
+		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
+
+kafka-5c:
+	@echo 'Challenge #5c: Efficient Kafka-Style Log'
+	@cd maelstrom; \
+	./maelstrom test -w kafka --bin ../erlang/5c/kafka.erl \
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
 
 g-set:

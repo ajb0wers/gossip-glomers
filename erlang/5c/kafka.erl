@@ -316,8 +316,6 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
 
-
-
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
@@ -335,3 +333,17 @@ parse_line(Line) ->
     <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
+
+%% Highest Random Weight
+%% https://jola.dev/posts/highest-random-weight-in-elixir
+owner(Key, [_H|_] = Nodes) ->
+  Hashes = [{N, erlang:phash2({Key, N})} || N <:- Nodes],
+  {Node, _Max} = lists:foldl(fun
+    ({_, Hash0} = Elem, AccIn) ->
+      case AccIn of
+        {_,Hash} when Hash0 > Hash -> Elem;
+        _ -> AccIn
+      end;
+    (Elem, none) -> Elem
+  end, none, Hashes),
+  Node.
