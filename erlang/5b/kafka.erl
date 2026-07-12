@@ -105,11 +105,11 @@ handle_msg({~"commit_offsets", _Src, _Dest, _Body} = Msg, State) ->
 handle_msg({~"list_committed_offsets", _, _, _} = Msg, State) ->
   handle_list(Msg, State);
 handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
-  #{ReplyId := {F, Data}} = State#state.callbacks, 
+  #{ReplyId := {Function, Data}} = State#state.callbacks, 
   Callbacks0 = State#state.callbacks,
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{callbacks=Callbacks},
-  erlang:apply(?MODULE, F, [{Msg, Data}, NewState]);
+  ?MODULE:Function({Msg, Data}, NewState);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_send({~"send", _, _, Body} = Send, State) ->
