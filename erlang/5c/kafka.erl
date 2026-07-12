@@ -344,6 +344,5 @@ owner(Key, [_H|_] = Nodes) ->
         {_,Hash} when Hash0 > Hash -> Elem;
         _ -> AccIn
       end;
-    (Elem, none) -> Elem
-  end, none, Hashes),
+  end, hd(Hashes), Hashes),
   Node.
