@@ -52,15 +52,6 @@ g-counter:
 	./maelstrom test -w g-counter --bin ../erlang/4/counter.erl \
 		--node-count 3 --rate 100 --time-limit 20 --nemesis partition
 
-g-set:
-	@cd maelstrom; \
-	./maelstrom test -w g-set --bin ../erlang/4/g_set.erl --time-limit 20 --rate 10
-
-pn-counter:
-	@cd maelstrom; \
-	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
-		--time-limit 20 --rate 10 
-
 kafka-5a:
 	@echo 'Challenge #5a: Single-Node Kafka-Style Log'
 	@cd maelstrom; \
@@ -72,3 +63,15 @@ kafka-5b:
 	@cd maelstrom; \
 	./maelstrom test -w kafka --bin ../erlang/5b/kafka.erl \
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
+
+g-set:
+	@echo 'Maelstrom G-set'
+	@cd maelstrom; \
+	./maelstrom test -w g-set --bin ../erlang/4/g_set.erl --time-limit 20 --rate 10
+
+pn-counter:
+	@echo 'Maelstrom PN-Counters'
+	@cd maelstrom; \
+	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
+		--time-limit 20 --rate 10 
+
