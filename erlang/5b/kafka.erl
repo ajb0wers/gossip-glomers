@@ -102,7 +102,7 @@ handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
   handle_poll(Msg, State);
 handle_msg({~"commit_offsets", _Src, _Dest, _Body} = Msg, State) ->
   handle_commit(Msg, State);
-handle_msg({~"list_committed_offsets", _Src, _Dest, _Body} = Msg, State) ->
+handle_msg({~"list_committed_offsets", _, _, _} = Msg, State) ->
   handle_list(Msg, State);
 handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {F, Data}} = State#state.callbacks, 
@@ -111,19 +111,6 @@ handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   NewState = State#state{callbacks=Callbacks},
   erlang:apply(?MODULE, F, [{Msg, Data}, NewState]);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
-
-%% handle_msg({~"list_committed_offsets", Src, Dest, Body}, State) ->
-%%   #{<<"keys">> := Ks, <<"msg_id">> := MsgId} = Body,
-%% 
-%%   Offsets = list(Ks, State#state.data),
-%% 
-%%   reply(Src, Dest, #{
-%%     <<"type">> => <<"list_committed_offsets_ok">>,
-%%     <<"offsets">> => Offsets,
-%%     <<"in_reply_to">> => MsgId
-%%   }, State);
-%% 
-
 
 handle_send({~"send", _, _, Body} = Send, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
