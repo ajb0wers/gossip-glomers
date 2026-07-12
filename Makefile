@@ -65,12 +65,12 @@ kafka-5b:
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
 
 g-set:
-	@echo 'Maelstrom G-set'
+	@echo 'Maelstrom CRDTs G-set'
 	@cd maelstrom; \
 	./maelstrom test -w g-set --bin ../erlang/4/g_set.erl --time-limit 20 --rate 10
 
 pn-counter:
-	@echo 'Maelstrom PN-Counters'
+	@echo 'Maelstrom CRDTs PN-Counters'
 	@cd maelstrom; \
 	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
 		--time-limit 20 --rate 10 
