@@ -334,7 +334,7 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
 
-%% Highest Random Weight
+%% Highest Random Weight in Elixir (2026)
 %% https://jola.dev/posts/highest-random-weight-in-elixir
 owner(Key, [_H|_] = Nodes) ->
   Hashes = [{N, erlang:phash2({Key, N})} || N <:- Nodes],
