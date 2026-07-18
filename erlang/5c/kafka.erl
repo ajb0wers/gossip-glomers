@@ -94,8 +94,6 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
   }, NewState);
-
-
 handle_msg({~"send", _Src, _Dest, _Body} = Msg, State) ->
   handle_send(Msg, State);
 handle_msg({~"poll", _Src, _Dest, _Body} = Msg, State) ->
@@ -112,11 +110,30 @@ handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   ?MODULE:Function({Msg, Data}, NewState);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_send({~"send", _, _, Body} = Send, State) ->
+handle_send({~"send",_,_,Body} = Msg, State) ->
+ #{<<"key">> := Key} = Body,
+ Owner = owner(Key, State#state.node_ids),
+ handle_send({Msg, {owner, Owner}}, State);
+handle_send({{~"send", _, _, Body}, {owner, Owner}} = Send,
+            #state{node_id=Id} = State) when Owner /= Id ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
+  NewState = State#state{callbacks=Callbacks},
+  reply(Owner, Body#{<<"msg_id">> => MsgId}, NewState);
+handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
+  {{~"send", Src, _, #{~"msg_id":=MsgId}} ,_} = Info,
+  #{<<"offset">> := Offset} = Body,
+  reply(Src, #{
+    <<"type">> => <<"send_ok">>,
+    <<"offset">> => Offset,
+    <<"in_reply_to">> => MsgId
+  }, State);
+handle_send({{~"send",_,_,Body} = Msg, {owner, _}}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   #{<<"key">> := Key} = Body,
   Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
+  Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
   NewState = State#state{callbacks=Callbacks},
   reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
@@ -222,8 +239,7 @@ handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
   %% Data = Data0#{Key => lists:reverse(List)}, 
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
 
-
-handle_commit({~"commit_offsets", _Src, _Dest, Body} = Msg, State) ->
+handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
   Info = {maps:to_list(Offsets), Msg},
   handle_commit({lin_read, Info}, State);
@@ -343,6 +359,6 @@ owner(Key, [_H|_] = Nodes) ->
       case AccIn of
         {_,Hash} when Hash0 > Hash -> Elem;
         _ -> AccIn
-      end;
+      end
   end, hd(Hashes), Hashes),
   Node.
