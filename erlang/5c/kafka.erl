@@ -235,17 +235,49 @@ handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
     #{Key := List} -> Data0#{Key => lists:reverse(List)};
     _ -> Data0
   end,
-  %% #{Key := List}  = Data0,
-  %% Data = Data0#{Key => lists:reverse(List)}, 
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
 
 handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
-  Info = {maps:to_list(Offsets), Msg},
-  handle_commit({lin_read, Info}, State);
-handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
+
+  Logs = maps:fold(fun (K, V, AccIn) ->
+    Owner = owner(K, State#state.node_ids),
+    Map = maps:get(Owner, AccIn, #{}),
+    AccIn#{Owner => Map#{K => V}}
+  end, _Init=#{}, Offsets),
+
+  Info = {maps:to_list(Logs), Msg},
+  handle_commit({loop, Info}, State);
+
+handle_commit({loop, {[{Owner,Offsets}|_], _Msg} = Info},
+             #state{node_id=Id} = State)
+  when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {Key, _Offset} = Log,
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
+  NewState = State#state{callbacks=Callbacks},
+  reply(Owner, #{
+    <<"type">>    => <<"commit_offsets">>, 
+    <<"msg_id">>  => MsgId,
+    <<"offsets">> => Offsets
+  }, NewState);
+handle_commit({loop, {[], Msg} = _Info}, State) ->
+  {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  reply(Src, #{
+    <<"type">> => <<"commit_offsets_ok">>, 
+    <<"in_reply_to">> => MsgId
+  }, State);
+handle_commit({loop, {Logs, Msg}}, State) ->
+   [{_Owner,Offsets}|_] = Logs,
+   Info = {maps:to_list(Offsets), Logs, Msg},
+   handle_commit({lin_read, Info}, State);
+handle_commit({{~"commit_offsets_ok", _, _,_}, {[_|Logs], Msg}}, State) ->
+  handle_commit({loop, {Logs, Msg}}, State);
+
+handle_commit({lin_read, {[], [_|Logs], Msg} = _Info}, State) ->
+  handle_commit({loop, {Logs, Msg}}, State); 
+handle_commit({lin_read, {[{Key,_}|_], _, _} = Info}, State) ->
+  MsgId = erlang:unique_integer([monotonic, positive]), 
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
@@ -256,18 +288,12 @@ handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
     <<"key">>    => [<<"commit_offset">>,Key],
     <<"msg_id">> => MsgId
   }, NewState);
-handle_commit({lin_read, {[], Msg} = _Info}, State) ->
-  {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
-  reply(Src, #{
-    <<"type">> => <<"commit_offsets_ok">>, 
-    <<"in_reply_to">> => MsgId
-  }, State);
 handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
-  {[{_Key,Offset}|Logs], Msg} = Info, 
+  {[{_Key,Offset}|Logs], Owners, Msg} = Info, 
   if
-    Offset >= Value -> handle_commit({cas, Value, Info}, State);
-    true -> handle_commit({lin_read, {Logs, Msg}}, State)
+    Offset > Value -> handle_commit({cas, Value, Info}, State);
+    true -> handle_commit({lin_read, {Logs, Owners, Msg}}, State)
   end;
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
@@ -276,8 +302,7 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   handle_commit({cas, -1, Info}, State);
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {Logs, _Msg} = Info,
-  [{Key, Offset}|_] = Logs,
+  {[{Key, Offset}|_], _Owners, _Msg} = Info,
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
@@ -292,8 +317,8 @@ handle_commit({cas, From, Info}, State) ->
     <<"create_if_not_exists">> => true
   }, NewState);
 handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
-  {[_|Logs], Msg}  = Info,
-  handle_commit({lin_read, {Logs, Msg}}, State);
+  {[_|Logs], Owners, Msg} = Info,
+  handle_commit({lin_read, {Logs, Owners, Msg}}, State);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
@@ -352,13 +377,15 @@ parse_line(Line) ->
 
 %% Highest Random Weight in Elixir (2026)
 %% https://jola.dev/posts/highest-random-weight-in-elixir
-owner(Key, [_H|_] = Nodes) ->
-  Hashes = [{N, erlang:phash2({Key, N})} || N <:- Nodes],
-  {Node, _Max} = lists:foldl(fun
-    ({_, Hash0} = Elem, AccIn) ->
-      case AccIn of
-        {_,Hash} when Hash0 > Hash -> Elem;
-        _ -> AccIn
-      end
-  end, hd(Hashes), Hashes),
+owner(Key, Nodes) ->
+  Scores = [{N, erlang:phash2({Key, N})} || N <:- Nodes],
+  Highest = fun 
+    ({_, Hash} = S, {_,Max} = AccIn) ->
+    if 
+      Hash > Max -> S;
+      true -> AccIn
+    end;
+    (S, {}) ->  S
+  end,
+  {Node, _} = lists:foldl(Highest, _Acc0={}, Scores),
   Node.
