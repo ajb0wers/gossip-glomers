@@ -377,14 +377,10 @@ parse_line(Line) ->
 
 %% Highest Random Weight in Elixir (2026)
 %% https://jola.dev/posts/highest-random-weight-in-elixir
-owner(Key, Nodes) ->
-  [S0|Scores] = [{N, erlang:phash2({Key, N})} || N <:- Nodes],
-  Highest = fun 
-    ({_, Hash} = S, {_,Max} = AccIn) ->
-      if 
-        Hash > Max -> S;
-        true -> AccIn
-      end
+owner(Key, [N0|Nodes]) ->
+  Highest = fun (N, AccIn) ->
+    S1 = erlang:phash2({Key, N}),
+    S2 = erlang:phash2({Key, AccIn}),
+    if S1 > S2 -> N; true -> AccIn end
   end,
-  {Node, _} = lists:foldl(Highest, S0, Scores),
-  Node.
+  lists:foldl(Highest, N0, Nodes).
