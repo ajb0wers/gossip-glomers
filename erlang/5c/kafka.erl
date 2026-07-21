@@ -1,5 +1,9 @@
 #!/usr/bin/env -S escript -c
 -module(kafka).
+-moduledoc """
+Challenge #5c: Efficient Kafka-Style Log
+https://www.fly.io/dist-sys/5c/
+""".
 
 -export([init/1, handle_send/2, handle_poll/2, handle_commit/2, handle_list/2]).
 
