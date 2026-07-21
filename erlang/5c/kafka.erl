@@ -375,12 +375,24 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
 
-%% Highest Random Weight in Elixir (2026)
-%% https://jola.dev/posts/highest-random-weight-in-elixir
-owner(Key, [N0|Nodes]) ->
-  Highest = fun (N, AccIn) ->
-    S1 = erlang:phash2({Key, N}),
-    S2 = erlang:phash2({Key, AccIn}),
-    if S1 > S2 -> N; true -> AccIn end
-  end,
-  lists:foldl(Highest, N0, Nodes).
+-doc """
+Highest Random Weight in Elixir (2026)
+https://jola.dev/posts/highest-random-weight-in-elixir
+
+```elixir
+defmodule HRW do
+  def owner(key, nodes) do
+    Enum.max_by(nodes, fn node ->
+      :erlang.phash2({key, node})
+    end)
+  end
+end
+```
+
+Rendezvous hashing - Wikipedia
+https://en.wikipedia.org/wiki/Rendezvous_hashing
+""".
+owner(Key, Nodes) ->
+  Scores = [{erlang:phash2({Key, N}), N} || N <:- Nodes],
+  {_, Heighest} = lists:max(Scores), Heighest.
+
