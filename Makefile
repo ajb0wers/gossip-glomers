@@ -63,6 +63,7 @@ kafka-5b:
 	@echo 'Challenge #5b: Multi-Node Kafka-Style Log'
 	@cd maelstrom; \
 	./maelstrom test -w kafka --bin ../erlang/5b/kafka.erl \
+		--log-net-send --log-net-recv \
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
 
 kafka-5c:

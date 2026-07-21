@@ -21,11 +21,9 @@ https://www.fly.io/dist-sys/5c/
 -record(state, {
   node_id   = null :: 'null' | binary(),
   node_ids  = []   :: [binary()],
-  callbacks = #{} :: #{MsgId::non_neg_integer() := any()},
-  data = #{} :: #{Key::binary() := {
-                    Length::non_neg_integer(),
-                    Commit::non_neg_integer(),
-                    Msgs::[{Offset::non_neg_integer(), any()}]}}
+  callbacks = #{}  :: #{MsgId::non_neg_integer() := any()},
+  offsets   = #{}  :: #{Key::binary() := Offset::non_neg_integer()},
+  commits   = #{}  :: #{Key::binary() := Offset::non_neg_integer()}
 }).
 
 main([]) -> 
@@ -133,9 +131,10 @@ handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
     <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
   }, State);
-handle_send({{~"send",_,_,Body} = Msg, {owner, _}}, State) ->
+handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
+           #state{offsets=Offsets} = State)
+  when is_map_key(Key, Offsets)->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  #{<<"key">> := Key} = Body,
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
   NewState = State#state{callbacks=Callbacks},
@@ -144,13 +143,19 @@ handle_send({{~"send",_,_,Body} = Msg, {owner, _}}, State) ->
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
   }, NewState);
+handle_send({{~"send",_,_,_} = Msg, {owner, _}}, State) ->
+  handle_send({cas, -1, Msg}, State);
 handle_send({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
   #{~"value" := Value} = Body,
   handle_send({cas, Value, Send}, State);
-handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
+handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
+  Send = case Info of 
+    {{_Key,_From,_Offset,_N}, Msg} = _Cas -> Msg;
+    Msg = _Read -> Msg
+  end,
   handle_send({cas, -1, Send}, State);
 handle_send({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
@@ -173,10 +178,11 @@ handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
+  Offset0 = max(Value, maps:get(Key, State#state.offsets, 0)),
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
-  NewState = State#state{callbacks=Callbacks},
+  NewState = State#state{callbacks=Callbacks, offsets=#{Key => Offset0}},
 
   reply(~"seq-kv", Dest, #{
     <<"type">> => <<"write">>,
@@ -184,11 +190,14 @@ handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
-handle_send({{~"error", ~"lin-kv", _Dest, Body}, {_, Msg} = _Send}, State)
+handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_send(Msg, State);
+  {{Key, _, Offset, _N}, Msg} = Info,
+  Max = max(Offset, maps:get(Key, State#state.offsets, 0)),
+  NewState = State#state{offsets=#{Key => Max}},
+  handle_send(Msg, NewState);
 handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{_, _, Offset}, Msg} = Info,
   {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
@@ -321,7 +330,9 @@ handle_commit({cas, From, Info}, State) ->
     <<"create_if_not_exists">> => true
   }, NewState);
 handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
-  {[_|Logs], Owners, Msg} = Info,
+  {[{_Key,_Offset}|Logs], Owners, Msg} = Info,
+  %% Value = maps:get(Key, State#state.commits, -1),
+  %% NewState = State#state{commits=#{Key => max(Value,Offset)}},
   handle_commit({lin_read, {Logs, Owners, Msg}}, State);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
