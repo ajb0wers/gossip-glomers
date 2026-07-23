@@ -212,9 +212,8 @@ handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
   PollInfo = {maps:to_list(Offsets), #{}, Msg},
   %% TODO: link-kv read to get the tail offset.
   handle_poll({seq_read, PollInfo}, State);
-handle_poll({seq_read, {[Log|_], _, _Msg} = PollInfo}, State) ->
+handle_poll({seq_read, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {Key, Offset} = Log,
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_poll, PollInfo}},
@@ -312,7 +311,7 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
-  handle_commit({cas, -1, Info}, State);
+  handle_commit({cas, 0, Info}, State);
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {[{Key, Offset}|_], _Owners, _Msg} = Info,
@@ -330,10 +329,10 @@ handle_commit({cas, From, Info}, State) ->
     <<"create_if_not_exists">> => true
   }, NewState);
 handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
-  {[{_Key,_Offset}|Logs], Owners, Msg} = Info,
-  %% Value = maps:get(Key, State#state.commits, -1),
-  %% NewState = State#state{commits=#{Key => max(Value,Offset)}},
-  handle_commit({lin_read, {Logs, Owners, Msg}}, State);
+  {[{Key,Offset}|Logs], Owners, Msg} = Info,
+  Value = maps:get(Key, State#state.commits, 0),
+  NewState = State#state{commits=#{Key => max(Value,Offset)}},
+  handle_commit({lin_read, {Logs, Owners, Msg}}, NewState);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
