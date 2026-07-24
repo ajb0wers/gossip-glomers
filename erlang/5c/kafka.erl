@@ -132,8 +132,7 @@ handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
-           #state{offsets=Offsets} = State)
-  when is_map_key(Key, Offsets)->
+           #state{offsets=Offsets} = State) when is_map_key(Key, Offsets) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
@@ -149,7 +148,7 @@ handle_send({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
   #{~"value" := Value} = Body,
   handle_send({cas, Value, Send}, State);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   Send = case Info of 
@@ -176,13 +175,14 @@ handle_send({cas, From, Send}, State) ->
   }, NewState);
 handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  {{Key, _, Offset, _N}, Msg} = Info,
+  {{Key, _From, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
-  Offset0 = max(Value, maps:get(Key, State#state.offsets, 0)),
+  % Offset0 = max(Offset, maps:get(Key, State#state.offsets, 0)),
+  Offsets = maps:merge(#{Key => 0}, State#state.offsets),
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
-  NewState = State#state{callbacks=Callbacks, offsets=#{Key => Offset0}},
+  NewState = State#state{callbacks=Callbacks, offsets=Offsets},
 
   reply(~"seq-kv", Dest, #{
     <<"type">> => <<"write">>,
@@ -191,31 +191,37 @@ handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
     <<"msg_id">> => MsgId
   }, NewState);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when ?RPC_PRECONDITION_FAILED(Body) ->
+       when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
-  {{Key, _, Offset, _N}, Msg} = Info,
-  Max = max(Offset, maps:get(Key, State#state.offsets, 0)),
-  NewState = State#state{offsets=#{Key => Max}},
+  {{Key, _From, _OffsetTo, _N}, Msg} = Info,
+  %% Max = max(Offset, maps:get(Key, State#state.offsets, 0)),
+  %% NewState = State#state{offsets=#{Key => Max}},
+  %% handle_send(Msg, NewState);
+  Offsets = maps:merge(#{Key => 0}, State#state.offsets),
+  NewState = State#state{offsets=Offsets},
   handle_send(Msg, NewState);
 handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
-  {{_, _, Offset}, Msg} = Info,
+  {{Key, _, Offset}, Msg} = Info,
   {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  %% TODO: maps:merge_with/3
+  Offsets0 = State#state.offsets,
+  Offsets = Offsets0#{Key => max(Offset, maps:get(Key, Offsets0, 0))},
+  NewState = State#state{offsets=Offsets},
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
     <<"offset">> => Offset,
     <<"in_reply_to">> => MsgId
-  }, State).
+  }, NewState).
 
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
   PollInfo = {maps:to_list(Offsets), #{}, Msg},
   %% TODO: link-kv read to get the tail offset.
   handle_poll({read_loop, PollInfo}, State);
-handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},
-            #state{commits=Commits} = State)
-  when Offset > map_get(Key, Commits) -> 
-  {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
+handle_poll({read_loop, {[{Key,Index}|Logs], Data0, Msg} = _Info},
+            #state{offsets=Offsets} = State)
+       when Index > map_get(Key, Offsets) -> 
   Data = case Data0 of 
     #{Key := List} -> Data0#{Key => lists:reverse(List)};
     _ -> Data0
@@ -247,7 +253,7 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   Logs = [{Key,Offset+1}|Ls],
   handle_poll({read_loop, {Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
-  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
   %% TODO: case Data0 of {}; or maps:get_or_default = []
   Data = case Data0 of 
@@ -269,8 +275,7 @@ handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   handle_commit({loop, Info}, State);
 
 handle_commit({loop, {[{Owner,Offsets}|_], _Msg} = Info},
-             #state{node_id=Id} = State)
-  when Owner /= Id ->
+              #state{node_id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
@@ -315,7 +320,7 @@ handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
     true -> handle_commit({lin_read, {Logs, Owners, Msg}}, State)
   end;
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+         when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   handle_commit({cas, 0, Info}, State);
@@ -341,7 +346,7 @@ handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
   NewState = State#state{commits=#{Key => max(Value,Offset)}},
   handle_commit({lin_read, {Logs, Owners, Msg}}, NewState);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when ?RPC_PRECONDITION_FAILED(Body) ->
+         when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
@@ -373,7 +378,7 @@ handle_list({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   NewInfo = {Keys, Offsets#{Key => Value}, Msg},
   handle_list({read_offsets, NewInfo}, State);
 handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-  when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   {[Key|Keys], Offsets, Msg} = Info, 
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
@@ -412,6 +417,19 @@ end
 
 Rendezvous hashing - Wikipedia
 https://en.wikipedia.org/wiki/Rendezvous_hashing
+
+## Examples
+
+```erlang
+1> owner(<<"0">>, [<<"n0">>, <<"n1">>]).
+<<"n1">>
+2> owner(<<"2">>, [<<"n0">>, <<"n1">>]).
+<<"n0">>
+3> owner(<<"4">>, [<<"n0">>, <<"n1">>]).
+<<"n1">>
+4> owner(<<"8">>, [<<"n0">>, <<"n1">>]).
+<<"n0">>
+```
 """.
 owner(Key, Nodes) ->
   Scores = [{erlang:phash2({Key, N}), N} || N <:- Nodes],
