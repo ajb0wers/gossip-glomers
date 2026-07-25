@@ -43,19 +43,20 @@ kafka() {
   # {"body":{"in_reply_to":11,"type":"commit_offsets_ok"},"dest":"c1","src":"n1"}
   
    
-  # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":22,"type":"list_committed_offsets","keys":["k1","k2"]}}'
-  # # {"body":{"key":["commit_offset","k1"],"msg_id":22,"type":"read"},"dest":"lin-kv","src":"n1"}
-  # printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":22,"type":"read_ok","value":1}}'
-  # # {"body":{"key":["commit_offset","k2"],"msg_id":23,"type":"read"},"dest":"lin-kv","src":"n1"}
-  # printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":23,"type":"read_ok","value":2000}}'
-  # # {"body":{"in_reply_to":22,"offsets":{"k1":1,"k2":2000},"type":"list_committed_offsets_ok"},"dest":"c1","src":"n1"}
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":22,"type":"list_committed_offsets","keys":["k1","k2"]}}'
+  # {"body":{"key":["commit_offset","k1"],"msg_id":15,"type":"read"},"dest":"lin-kv","src":"n1"}
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":15,"type":"read_ok","value":1}}'
+  # {"body":{"key":["commit_offset","k2"],"msg_id":16,"type":"read"},"dest":"lin-kv","src":"n1"}
+  printf "%s\n" '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":16,"type":"read_ok","value":2000}}'
+  # {"body":{"in_reply_to":22,"offsets":{"k1":1,"k2":2000},"type":"list_committed_offsets_ok"},"dest":"c1","src":"n1"}
  
-  # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":25,"type":"poll","offsets":{"666":101}}}'
-  # # {"body":{"key":["666",101],"msg_id":24,"type":"read"},"dest":"seq-kv","src":"n1"}
-  # printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":24,"type":"error","code":20}}'
-  # # {"body":{"in_reply_to":25,"msgs":{},"type":"poll_ok"},"dest":"c1","src":"n1"}
-  # printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":26,"type":"poll","offsets":{}}}'
-  # # {"body":{"in_reply_to":26,"msgs":{},"type":"poll_ok"},"dest":"c1","src":"n1"}
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":25,"type":"poll","offsets":{"666":101}}}'
+  # # {"body":{"key":["666",101],"msg_id":17,"type":"read"},"dest":"seq-kv","src":"n1"}
+  printf "%s\n" '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":17,"type":"error","code":20}}'
+  # {"body":{"in_reply_to":25,"msgs":{},"type":"poll_ok"},"dest":"c1","src":"n1"}
+
+  printf "%s\n" '{"src":"c1","dest":"n1","body":{"msg_id":26,"type":"poll","offsets":{}}}'
+  # {"body":{"in_reply_to":26,"msgs":{},"type":"poll_ok"},"dest":"c1","src":"n1"}
 
   cat -
 } 
