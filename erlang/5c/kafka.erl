@@ -221,11 +221,6 @@ handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
 handle_poll({read_loop, {[{Key,Index}|Logs], Data, Msg} = _Info},
             #state{offsets=Offsets} = State)
        when Index > map_get(Key, Offsets) -> 
-  % Data = case Data0 of 
-  %   #{Key := List} -> Data0#{Key => lists:reverse(List)};
-  %   _ -> Data0
-  % end,
-  %% Data = maps:update_with(Key, fun lists:reverse/1, [], Data0),
   handle_poll({read_loop, {Logs, Data, Msg}}, State);
 handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
