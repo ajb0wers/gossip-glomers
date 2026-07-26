@@ -217,15 +217,15 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
   PollInfo = {maps:to_list(Offsets), #{}, Msg},
-  %% TODO: link-kv read to get the tail offset.
   handle_poll({read_loop, PollInfo}, State);
-handle_poll({read_loop, {[{Key,Index}|Logs], Data0, Msg} = _Info},
+handle_poll({read_loop, {[{Key,Index}|Logs], Data, Msg} = _Info},
             #state{offsets=Offsets} = State)
        when Index > map_get(Key, Offsets) -> 
-  Data = case Data0 of 
-    #{Key := List} -> Data0#{Key => lists:reverse(List)};
-    _ -> Data0
-  end,
+  % Data = case Data0 of 
+  %   #{Key := List} -> Data0#{Key => lists:reverse(List)};
+  %   _ -> Data0
+  % end,
+  %% Data = maps:update_with(Key, fun lists:reverse/1, [], Data0),
   handle_poll({read_loop, {Logs, Data, Msg}}, State);
 handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
@@ -237,8 +237,9 @@ handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
     <<"key">>    => [Key,Offset],
     <<"msg_id">> => MsgId
   }, NewState);
-handle_poll({read_loop, {[], Msgs, Msg}}, State) ->
+handle_poll({read_loop, {[], Msgs0, Msg}}, State) ->
   {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
   reply(Src, #{
     <<"type">> => <<"poll_ok">>,
     <<"msgs">> => Msgs,
@@ -254,13 +255,9 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   handle_poll({read_loop, {Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
        when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
-  %% TODO: case Data0 of {}; or maps:get_or_default = []
-  Data = case Data0 of 
-    #{Key := List} -> Data0#{Key => lists:reverse(List)};
-    _ -> Data0
-  end,
+  {[_|Logs], Data, Msg} = PollInfo, 
   handle_poll({read_loop, {Logs, Data, Msg}}, State).
+
 
 handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
