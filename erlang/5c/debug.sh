@@ -50,7 +50,6 @@ kafka() {
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":14,"type":"cas_ok"}}'
   # {"body":{"in_reply_to":11,"type":"commit_offsets_ok"},"dest":"c1","src":"n1"}
   
-   
   send '{"src":"c1","dest":"n1","body":{"msg_id":22,"type":"list_committed_offsets","keys":["k1","k2"]}}'
   # {"body":{"key":["commit_offset","k1"],"msg_id":15,"type":"read"},"dest":"lin-kv","src":"n1"}
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":15,"type":"read_ok","value":1}}'
