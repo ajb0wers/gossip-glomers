@@ -18,13 +18,13 @@ https://www.fly.io/dist-sys/5c/
 -define(RPC_PRECONDITION_FAILED(Body),
   ?RPC_ERR_CODE(?PRECONDITION_FAILED, Body)).
 
--record(state, {
+-record #state{
   node_id   = null :: 'null' | binary(),
   node_ids  = []   :: [binary()],
   callbacks = #{}  :: #{MsgId::non_neg_integer() := any()},
   offsets   = #{}  :: #{Key::binary() := Offset::non_neg_integer()},
   commits   = #{}  :: #{Key::binary() := Offset::non_neg_integer()}
-}).
+}.
 
 main([]) -> 
   io:setopts(standard_io, [{binary, true}]),
@@ -214,14 +214,19 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState).
 
-% TODO: -spec {loop {Logs::[Owner, #{Key:=Offset}], Data, Msg}}
-% TODO: -spec {read_loop, {
-%              List::[{Key,Index}],
-%              Logs::[Owner, #{Key:=Offsets}],
-%              Data, Msg}}
+% TODO:
+% -spec handle_poll(Info, State::#state) -> Result
+%              when
+%              Msg::{Tag, Src, Dest, Body},
+%              Key::binary(), Offset::non_negative_integer(),
+%              Msgs::#{Key::binary() := [[Key, Offset]]}
+%              Logs::[Owner, #{Key := Offset}]
+%              List::[{Key,Index::non_negative_integer()}]
+%              Info ::
+%                {loop {Logs, Data, Msg}} |
+%                {read_loop, {List, Logs, Msgs, Msg}}.
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
-
   Logs = maps:fold(fun (K, V, AccIn) ->
     Owner = owner(K, State#state.node_ids),
     Map = maps:get(Owner, AccIn, #{}),
@@ -229,22 +234,38 @@ handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
   end, _Init=#{}, Offsets),
   PollInfo = {maps:to_list(Logs), #{}, Msg},
   handle_poll({loop, PollInfo}, State);
+handle_poll({loop, {[{Owner,Offsets}|_], _, _} = Info},
+            #state{node_id=Id} = State) when Owner /= Id -> 
+  MsgId = erlang:unique_integer([monotonic, positive]), 
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => {handle_poll, Info}},
+  NewState = State#state{callbacks=Callbacks},
+  reply(Owner, #{
+    <<"type">>    => <<"poll">>, 
+    <<"msg_id">>  => MsgId,
+    <<"offsets">> => Offsets
+  }, NewState);
 handle_poll({loop, {[{_Owner,Offsets}|Logs], Msgs, Msg} = _Info},
-            #state{node_id=_Id} = State) -> %% TODO: when Owner /= Id -> 
+            #state{node_id=_Id} = State) -> 
   List = maps:to_list(Offsets),
   handle_poll({read_loop, {List, Logs, Msgs, Msg}}, State);
 handle_poll({loop, {[], Msgs0, Msg} = _Info}, State) ->
   {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
-  Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
+  Msgs = #{K => lists:sort(L) || K := L <:- Msgs0},
   reply(Src, #{
     <<"type">> => <<"poll_ok">>,
     <<"msgs">> => Msgs,
     <<"in_reply_to">> => MsgId
   }, State);
-handle_poll({read_loop, {[{Key,Index}|Logs], _Logs, Data, Msg} = _Info},
+handle_poll({{~"poll_ok", Src, _Dest, Body}, {[{Owner,_}|Logs], Data0, Msg}},
+            State) when Owner == Src -> 
+  #{<<"msgs">> := Msgs} = Body,
+  Data = maps:merge(Data0, Msgs),
+  handle_poll({loop, {Logs, Data, Msg}}, State);
+handle_poll({read_loop, {[{Key,Index}|List], Logs, Data, Msg} = _Info},
             #state{offsets=Offsets} = State)
        when Index > map_get(Key, Offsets) -> 
-  handle_poll({read_loop, {Logs, Data, Msg}}, State);
+  handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
@@ -255,7 +276,7 @@ handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
     <<"key">>    => [Key,Offset],
     <<"msg_id">> => MsgId
   }, NewState);
-handle_poll({read_loop, {[], [_|Logs], Msgs, Msg}}, State) ->
+handle_poll({read_loop, {[], Logs, Msgs, Msg}}, State) ->
   %% {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   %% Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
   %% reply(Src, #{
@@ -266,17 +287,18 @@ handle_poll({read_loop, {[], [_|Logs], Msgs, Msg}}, State) ->
   handle_poll({loop, {Logs, Msgs, Msg}}, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   #{~"value" := Value} = Body,
-  % {List0, Logs, Data0, Msg} = PollInfo, 
-  % [{Key, Offset}|Ls]  = List0,
-  % List = maps:get(Key, Data0, []),
-  % Data = Data0#{Key => [[Offset, Value] | List]},
   {[{Key,Offset}|Ls], Logs, Data0, Msg} = PollInfo, 
-  Data = maps:update_with(Key, fun(L) -> [[Offset,Value]|L] end, [], Data0),
+  List0 = maps:get(Key, Data0, []),
+  Data = Data0#{Key => [[Offset, Value] | List0]},
   List = [{Key,Offset+1}|Ls],
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
        when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[_|List], Logs, Data, Msg} = PollInfo, 
+  {[{_Key,_Offset}|List], Logs, Data, Msg} = PollInfo, 
+  %% Data = maybe 
+  %%   #{Key := List} ?= Data0,
+  %%   Data0#{Key => lists:reverse(List)}
+  %% end,
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State).
 
 
