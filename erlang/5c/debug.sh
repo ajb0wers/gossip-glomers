@@ -60,6 +60,7 @@ kafka() {
   send '{"src":"c1","dest":"n1","body":{"msg_id":25,"type":"poll","offsets":{"666":101}}}'
   # # {"body":{"key":["666",101],"msg_id":17,"type":"read"},"dest":"seq-kv","src":"n1"}
   send '{"src":"seq-kv","dest":"n1","body":{"in_reply_to":17,"type":"error","code":20}}'
+  cat -
   # {"body":{"in_reply_to":25,"msgs":{},"type":"poll_ok"},"dest":"c1","src":"n1"}
 
   send '{"src":"c1","dest":"n1","body":{"msg_id":26,"type":"poll","offsets":{}}}'

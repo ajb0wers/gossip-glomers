@@ -214,15 +214,38 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState).
 
+% TODO: -spec {loop {Logs::[Owner, #{Key:=Offset}], Data, Msg}}
+% TODO: -spec {read_loop, {
+%              List::[{Key,Index}],
+%              Logs::[Owner, #{Key:=Offsets}],
+%              Data, Msg}}
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
-  PollInfo = {maps:to_list(Offsets), #{}, Msg},
-  handle_poll({read_loop, PollInfo}, State);
-handle_poll({read_loop, {[{Key,Index}|Logs], Data, Msg} = _Info},
+
+  Logs = maps:fold(fun (K, V, AccIn) ->
+    Owner = owner(K, State#state.node_ids),
+    Map = maps:get(Owner, AccIn, #{}),
+    AccIn#{Owner => Map#{K => V}}
+  end, _Init=#{}, Offsets),
+  PollInfo = {maps:to_list(Logs), #{}, Msg},
+  handle_poll({loop, PollInfo}, State);
+handle_poll({loop, {[{_Owner,Offsets}|Logs], Msgs, Msg} = _Info},
+            #state{node_id=_Id} = State) -> %% TODO: when Owner /= Id -> 
+  List = maps:to_list(Offsets),
+  handle_poll({read_loop, {List, Logs, Msgs, Msg}}, State);
+handle_poll({loop, {[], Msgs0, Msg} = _Info}, State) ->
+  {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
+  reply(Src, #{
+    <<"type">> => <<"poll_ok">>,
+    <<"msgs">> => Msgs,
+    <<"in_reply_to">> => MsgId
+  }, State);
+handle_poll({read_loop, {[{Key,Index}|Logs], _Logs, Data, Msg} = _Info},
             #state{offsets=Offsets} = State)
        when Index > map_get(Key, Offsets) -> 
   handle_poll({read_loop, {Logs, Data, Msg}}, State);
-handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
+handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_poll, PollInfo}},
@@ -232,26 +255,29 @@ handle_poll({read_loop, {[{Key,Offset}|_], _, _Msg} = PollInfo},State) ->
     <<"key">>    => [Key,Offset],
     <<"msg_id">> => MsgId
   }, NewState);
-handle_poll({read_loop, {[], Msgs0, Msg}}, State) ->
-  {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
-  Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
-  reply(Src, #{
-    <<"type">> => <<"poll_ok">>,
-    <<"msgs">> => Msgs,
-    <<"in_reply_to">> => MsgId
-  }, State);
+handle_poll({read_loop, {[], [_|Logs], Msgs, Msg}}, State) ->
+  %% {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  %% Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
+  %% reply(Src, #{
+  %%   <<"type">> => <<"poll_ok">>,
+  %%   <<"msgs">> => Msgs,
+  %%   <<"in_reply_to">> => MsgId
+  %% }, State);
+  handle_poll({loop, {Logs, Msgs, Msg}}, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   #{~"value" := Value} = Body,
-  {Logs0, Data0, Msg} = PollInfo, 
-  [{Key, Offset}|Ls]  = Logs0,
-  List = maps:get(Key, Data0, []),
-  Data = Data0#{Key => [[Offset, Value] | List]},
-  Logs = [{Key,Offset+1}|Ls],
-  handle_poll({read_loop, {Logs, Data, Msg}}, State);
+  % {List0, Logs, Data0, Msg} = PollInfo, 
+  % [{Key, Offset}|Ls]  = List0,
+  % List = maps:get(Key, Data0, []),
+  % Data = Data0#{Key => [[Offset, Value] | List]},
+  {[{Key,Offset}|Ls], Logs, Data0, Msg} = PollInfo, 
+  Data = maps:update_with(Key, fun(L) -> [[Offset,Value]|L] end, [], Data0),
+  List = [{Key,Offset+1}|Ls],
+  handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
        when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[_|Logs], Data, Msg} = PollInfo, 
-  handle_poll({read_loop, {Logs, Data, Msg}}, State).
+  {[_|List], Logs, Data, Msg} = PollInfo, 
+  handle_poll({read_loop, {List, Logs, Data, Msg}}, State).
 
 
 handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
