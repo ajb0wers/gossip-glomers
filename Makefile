@@ -74,7 +74,8 @@ kafka-5c:
 g-set:
 	@echo 'Maelstrom CRDTs G-set'
 	@cd maelstrom; \
-	./maelstrom test -w g-set --bin ../erlang/4/g_set.erl --time-limit 20 --rate 10
+	./maelstrom test -w g-set --bin ../erlang/4/g_set.erl \
+		--time-limit 20 --rate 10
 
 pn-counter:
 	@echo 'Maelstrom CRDTs PN-Counters'
