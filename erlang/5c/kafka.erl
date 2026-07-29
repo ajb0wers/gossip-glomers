@@ -132,7 +132,8 @@ handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
     <<"in_reply_to">> => MsgId
   }, State);
 handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
-           #state{offsets=Offsets} = State) when is_map_key(Key, Offsets) ->
+            #state{offsets=Offsets} = State)
+       when is_map_key(Key, Offsets) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
@@ -177,9 +178,7 @@ handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _From, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
-  % Offset0 = max(Offset, maps:get(Key, State#state.offsets, 0)),
   Offsets = maps:merge(#{Key => 0}, State#state.offsets),
-
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
   NewState = State#state{callbacks=Callbacks, offsets=Offsets},
@@ -195,18 +194,15 @@ handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
   {{Key, _From, _OffsetTo, _N}, Msg} = Info,
-  %% Max = max(Offset, maps:get(Key, State#state.offsets, 0)),
-  %% NewState = State#state{offsets=#{Key => Max}},
-  %% handle_send(Msg, NewState);
   Offsets = maps:merge(#{Key => 0}, State#state.offsets),
   NewState = State#state{offsets=Offsets},
   handle_send(Msg, NewState);
 handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{Key, _, Offset}, Msg} = Info,
   {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
-  %% TODO: maps:merge_with/3
+  MaxOffset = fun (V) -> max(V, Offset) end, 
   Offsets0 = State#state.offsets,
-  Offsets = Offsets0#{Key => max(Offset, maps:get(Key, Offsets0, 0))},
+  Offsets = maps:update_with(Key, MaxOffset, 0, Offsets0),
   NewState = State#state{offsets=Offsets},
   reply(Src, Dest, #{
     <<"type">> => <<"send_ok">>,
@@ -277,13 +273,6 @@ handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
     <<"msg_id">> => MsgId
   }, NewState);
 handle_poll({read_loop, {[], Logs, Msgs, Msg}}, State) ->
-  %% {~"poll", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
-  %% Msgs = #{K => lists:reverse(L) || K := L <:- Msgs0},
-  %% reply(Src, #{
-  %%   <<"type">> => <<"poll_ok">>,
-  %%   <<"msgs">> => Msgs,
-  %%   <<"in_reply_to">> => MsgId
-  %% }, State);
   handle_poll({loop, {Logs, Msgs, Msg}}, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   #{~"value" := Value} = Body,
@@ -295,10 +284,6 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
        when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
   {[{_Key,_Offset}|List], Logs, Data, Msg} = PollInfo, 
-  %% Data = maybe 
-  %%   #{Key := List} ?= Data0,
-  %%   Data0#{Key => lists:reverse(List)}
-  %% end,
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State).
 
 
