@@ -16,10 +16,10 @@ https://www.fly.io/dist-sys/5c/
 -define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
 -define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
 
+-type nodeid() :: binary().
+-type msgid()  :: non_neg_integer().
 -type key()    :: binary().
 -type offset() :: non_neg_integer().
--type msgid()  :: non_neg_integer().
--type nodeid() :: binary().
 -record #state{
   id        = null :: 'null' | nodeid(),
   nodes     = []   :: [nodeid()],
