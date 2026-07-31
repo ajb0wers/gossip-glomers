@@ -5,25 +5,27 @@ Challenge #5c: Efficient Kafka-Style Log
 https://www.fly.io/dist-sys/5c/
 """.
 
--export([init/1, handle_send/2, handle_poll/2, handle_commit/2, handle_list/2]).
+-export([init/1]).
+-export([handle_send/2, handle_poll/2, handle_commit/2, handle_list/2]).
 
 -define(CRASH, 13).
 -define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
+-define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
+-define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
+-define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
 
--define(RPC_ERR_CODE(Code, Body), map_get(~"code", Body) == Code).
--define(RPC_KEY_DOES_NOT_EXIST(Body),
-  ?RPC_ERR_CODE(?KEY_DOES_NOT_EXIST, Body)).
--define(RPC_PRECONDITION_FAILED(Body),
-  ?RPC_ERR_CODE(?PRECONDITION_FAILED, Body)).
-
+-type key() :: binary().
+-type offset() :: non_neg_integer().
+-type msgid() :: non_neg_integer().
+-type nodeid() :: binary().
 -record #state{
-  node_id   = null :: 'null' | binary(),
-  node_ids  = []   :: [binary()],
-  callbacks = #{}  :: #{MsgId::non_neg_integer() := any()},
-  offsets   = #{}  :: #{Key::binary() := Offset::non_neg_integer()},
-  commits   = #{}  :: #{Key::binary() := Offset::non_neg_integer()}
+  id        = null :: 'null' | nodeid(),
+  nodes     = []   :: [nodeid()],
+  callbacks = #{}  :: #{msgid() := any()},
+  offsets   = #{}  :: #{key() := offset()},
+  commits   = #{}  :: #{key() := offset()}
 }.
 
 main([]) -> 
@@ -88,8 +90,8 @@ handle_msg({~"init", Src, Dest, Body}, State) ->
     <<"node_ids">> := NodeIds} = Body,
 
   NewState = State#state{
-    node_id  = NodeId,
-    node_ids = NodeIds
+    id  = NodeId,
+    nodes = NodeIds
   },
 
   reply(Src, Dest, #{
@@ -114,10 +116,10 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_send({~"send",_,_,Body} = Msg, State) ->
  #{<<"key">> := Key} = Body,
- Owner = owner(Key, State#state.node_ids),
+ Owner = owner(Key, State#state.nodes),
  handle_send({Msg, {owner, Owner}}, State);
 handle_send({{~"send", _, _, Body}, {owner, Owner}} = Send,
-            #state{node_id=Id} = State) when Owner /= Id ->
+            #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
@@ -224,14 +226,14 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
   Logs = maps:fold(fun (K, V, AccIn) ->
-    Owner = owner(K, State#state.node_ids),
+    Owner = owner(K, State#state.nodes),
     Map = maps:get(Owner, AccIn, #{}),
     AccIn#{Owner => Map#{K => V}}
   end, _Init=#{}, Offsets),
   PollInfo = {maps:to_list(Logs), #{}, Msg},
   handle_poll({loop, PollInfo}, State);
 handle_poll({loop, {[{Owner,Offsets}|_], _, _} = Info},
-            #state{node_id=Id} = State) when Owner /= Id -> 
+            #state{id=Id} = State) when Owner /= Id -> 
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_poll, Info}},
@@ -242,7 +244,7 @@ handle_poll({loop, {[{Owner,Offsets}|_], _, _} = Info},
     <<"offsets">> => Offsets
   }, NewState);
 handle_poll({loop, {[{_Owner,Offsets}|Logs], Msgs, Msg} = _Info},
-            #state{node_id=_Id} = State) -> 
+            #state{id=_Id} = State) -> 
   List = maps:to_list(Offsets),
   handle_poll({read_loop, {List, Logs, Msgs, Msg}}, State);
 handle_poll({loop, {[], Msgs0, Msg} = _Info}, State) ->
@@ -291,7 +293,7 @@ handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
 
   Logs = maps:fold(fun (K, V, AccIn) ->
-    Owner = owner(K, State#state.node_ids),
+    Owner = owner(K, State#state.nodes),
     Map = maps:get(Owner, AccIn, #{}),
     AccIn#{Owner => Map#{K => V}}
   end, _Init=#{}, Offsets),
@@ -300,7 +302,7 @@ handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   handle_commit({loop, Info}, State);
 
 handle_commit({loop, {[{Owner,Offsets}|_], _Msg} = Info},
-              #state{node_id=Id} = State) when Owner /= Id ->
+              #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
@@ -408,13 +410,13 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
 
-reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
+reply(Dest, Src, Body, State) when State#state.id =:= Src ->
   reply(Dest, Body, State).
 
 reply(Dest, Body, State) -> 
   Reply = #{
     <<"dest">> => Dest, 
-    <<"src">>  => State#state.node_id,
+    <<"src">>  => State#state.id,
     <<"body">> => Body},
   {reply, Reply, State}.
 
