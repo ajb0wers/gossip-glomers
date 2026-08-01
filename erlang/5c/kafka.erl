@@ -44,7 +44,7 @@ loop(standard_io) ->
     eof -> ok;
     {error, Reason} -> exit(Reason);
     Line ->
-      server ! {line, Line},
+      server ! Line,
       loop(standard_io)
   end.
 
@@ -58,13 +58,7 @@ rpcout() ->
 
 server(Fn, State) ->
   receive 
-    {line, Line} ->
-      Msg = parse_line(Line),
-      Reply = Fn(Msg, State),
-      server_reply(Fn, Reply);
-    Msg ->
-      Reply = Fn(Msg, State),
-      server_reply(Fn, Reply)
+    Msg -> server_call(Fn, Msg, State)
   end.
 
 server_reply(Fn, {ok, State}) ->
@@ -73,16 +67,19 @@ server_reply(Fn, {reply, Reply, State}) ->
   rpcout ! Reply,
   server(Fn, State);
 server_reply(Fn, {noreply, State, Info}) ->
-  server_continue(Fn, Info, State);
+  server_call(Fn, Info, State);
 server_reply(Fn, {reply, Reply0, State, Info}) ->
   rpcout ! Reply0,
-  server_continue(Fn, Info, State);
+  server_call(Fn, Info, State);
 server_reply(_Fn, stop) ->
   ok.
 
-server_continue(Fn, Info, State) ->
-  Reply = Fn(Info, State),
+server_call(Fn, Request, State) ->
+  Reply = Fn(Request, State),
   server_reply(Fn, Reply).
+
+handle_msg(Line, State)  when is_binary(Line) ->  
+  {noreply, State, parse_line(Line)};
 
 handle_msg({~"init", Src, Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
