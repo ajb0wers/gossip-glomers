@@ -61,6 +61,10 @@ server(Fn, State) ->
     Msg -> server_call(Fn, Msg, State)
   end.
 
+server_call(Fn, Request, State) ->
+  Reply = Fn(Request, State),
+  server_reply(Fn, Reply).
+
 server_reply(Fn, {ok, State}) ->
   server(Fn, State);
 server_reply(Fn, {reply, Reply, State}) ->
@@ -73,10 +77,6 @@ server_reply(Fn, {reply, Reply0, State, Info}) ->
   server_call(Fn, Info, State);
 server_reply(_Fn, stop) ->
   ok.
-
-server_call(Fn, Request, State) ->
-  Reply = Fn(Request, State),
-  server_reply(Fn, Reply).
 
 handle_msg(Line, State)  when is_binary(Line) ->  
   {noreply, State, parse_line(Line)};
