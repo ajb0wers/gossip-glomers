@@ -109,7 +109,14 @@ handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{callbacks=Callbacks},
   ?MODULE:Function({Msg, Data}, NewState);
+handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
+  #{<<"body">> := #{<<"msg_id">> := MsgId}} = Request,
+  Callbacks0 = State#state.callbacks,
+  Callbacks = Callbacks0#{MsgId => Info},
+  NewState = State#state{callbacks=Callbacks},
+  {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
+
 
 handle_send({~"send",_,_,Body} = Msg, State) ->
  #{<<"key">> := Key} = Body,
@@ -118,10 +125,8 @@ handle_send({~"send",_,_,Body} = Msg, State) ->
 handle_send({{~"send", _, _, Body}, {owner, Owner}} = Send,
             #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
-  NewState = State#state{callbacks=Callbacks},
-  reply(Owner, Body#{<<"msg_id">> => MsgId}, NewState);
+  Info = {?FUNCTION_NAME, Send},
+  callback(Owner, Body#{<<"msg_id">> => MsgId}, State, Info);
 handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
   {{~"send", Src, _, #{~"msg_id":=MsgId}} ,_} = Info,
   #{<<"offset">> := Offset} = Body,
@@ -134,14 +139,20 @@ handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
             #state{offsets=Offsets} = State)
        when is_map_key(Key, Offsets) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
-  NewState = State#state{callbacks=Callbacks},
-  reply(~"lin-kv", #{
+  %% Callbacks0 = State#state.callbacks,
+  %% Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
+  %% NewState = State#state{callbacks=Callbacks},
+  %% reply(~"lin-kv", #{
+  %%   <<"type">>   => <<"read">>,
+  %%   <<"key">>    => Key,
+  %%   <<"msg_id">> => MsgId
+  %% }, NewState);
+  callback(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
-  }, NewState);
+  }, State, {?FUNCTION_NAME, Msg});  
+
 handle_send({{~"send",_,_,_} = Msg, {owner, _}}, State) ->
   handle_send({cas, -1, Msg}, State);
 handle_send({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
@@ -160,34 +171,53 @@ handle_send({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
-
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,From,Offset,N}, Send}}},
-  NewState = State#state{callbacks=Callbacks},
-
-  reply(~"lin-kv", #{
+  %%
+  %% Callbacks0 = State#state.callbacks,
+  %% Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,From,Offset,N}, Send}}},
+  %% NewState = State#state{callbacks=Callbacks},
+  %%
+  %% reply(~"lin-kv", #{
+  %%   <<"type">>   => <<"cas">>,
+  %%   <<"key">>    => Key,
+  %%   <<"from">>   => From,
+  %%   <<"to">>     => Offset,
+  %%   <<"msg_id">> => MsgId,
+  %%   <<"create_if_not_exists">> => true
+  %% }, NewState);
+  Info = {?FUNCTION_NAME, {{Key,From,Offset,N}, Send}},
+  callback(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => Key,
     <<"from">>   => From,
     <<"to">>     => Offset,
     <<"msg_id">> => MsgId,
     <<"create_if_not_exists">> => true
-  }, NewState);
+  }, State, Info);
 handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _From, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
   Offsets = maps:merge(#{Key => 0}, State#state.offsets),
+
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
   NewState = State#state{callbacks=Callbacks, offsets=Offsets},
-
+  
   reply(~"seq-kv", Dest, #{
     <<"type">> => <<"write">>,
     <<"key">> => [Key,Offset],
     <<"value">> => Value,
     <<"msg_id">> => MsgId
   }, NewState);
+
+  %% Info = {?FUNCTION_NAME, {{Key,Value,Offset}, Msg}},
+  %% NewState = State#state{offsets=Offsets},
+  %% callback(~"seq-kv", #{
+  %%   <<"type">> => <<"write">>,
+  %%   <<"key">> => [Key,Offset],
+  %%   <<"value">> => Value,
+  %%   <<"msg_id">> => MsgId
+  %% }, NewState, Info);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
        when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
@@ -410,12 +440,19 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
 reply(Dest, Src, Body, State) when State#state.id =:= Src ->
   reply(Dest, Body, State).
 
-reply(Dest, Body, State) -> 
+reply(Dest, Body, #state{} = State) -> 
   Reply = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.id,
     <<"body">> => Body},
   {reply, Reply, State}.
+
+callback(Dest, Body, #state{} = State, {_Fun, _Data} = Info) ->
+  Request = #{
+    <<"dest">> => Dest, 
+    <<"src">>  => State#state.id,
+    <<"body">> => Body},
+  {noreply, State, {rpc, Request, Info}}.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
