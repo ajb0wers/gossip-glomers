@@ -13,14 +13,14 @@
 	dec     = #{}   :: map()
 }).
 
-main([]) -> 
+main([]) ->
   io:setopts(standard_io, [{binary, true}]),
 	register(server, spawn_link(?MODULE, init, [])),
   loop().
 
 loop() ->
   case io:get_line(?PROMPT) of
-    Line when is_binary(Line) -> 
+    Line when is_binary(Line) ->
 			server ! {line, Line},
       loop();
     eof ->
@@ -80,7 +80,7 @@ handle_msg(~"add", {Src, Dest, Body}, State) ->
 
   NodeId = State#state.node_id,
 
-  NewState = if 
+  NewState = if
     Delta > 0 ->
       Inc = State#state.inc, #{NodeId := P} = Inc,
       State#state{inc=Inc#{NodeId := P+Delta}};
@@ -124,7 +124,7 @@ handle_info(broadcast, State) ->
 
 merge(Message, #state{inc=IncIn, dec=DecIn}) when is_map(Message) ->
   Combiner = fun(_K, V1, V2) -> max(V1, V2) end,
-  #{<<"inc">> := Inc0, <<"dec">> := Dec0} = Message, 
+  #{<<"inc">> := Inc0, <<"dec">> := Dec0} = Message,
   Inc = maps:merge_with(Combiner, Inc0, IncIn),
   Dec = maps:merge_with(Combiner, Dec0, DecIn),
   {Inc, Dec}.
@@ -145,9 +145,9 @@ replicate(#state{node_id=Src} = State) ->
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
-reply(Dest, Body, State) -> 
+reply(Dest, Body, State) ->
   Reply = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   server_rpc ! {reply, Reply},
@@ -155,13 +155,13 @@ reply(Dest, Body, State) ->
 
 broadcast_msg(Src, Dest, Message) ->
   Msg = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
       <<"message">> => Message}},
   server_rpc ! {rpc, Msg}.
- 
+
 handle_rpc(State) ->
   receive
     {rpc, Msg} ->

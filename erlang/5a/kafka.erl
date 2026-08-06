@@ -12,11 +12,11 @@
                           Msgs :: [{Offset::non_neg_integer(), any()}]}}
 }).
 
-main([]) -> 
+main([]) ->
   io:setopts(standard_io, [{binary, true}]),
   loop(standard_io).
 
-loop(standard_io) -> 
+loop(standard_io) ->
   register(rpc_request, spawn_link(?MODULE, rpc_request, [noargs])),
   register(rpc_reply, spawn_link(?MODULE, rpc_reply, [noargs])),
   rpc_loop().
@@ -33,7 +33,7 @@ rpc_loop() ->
 rpc_request(noargs) ->
   rpc_request(#state{});
 rpc_request(#state{} = State) ->
-  receive 
+  receive
     {line, Line} ->
       {reply, Reply, NewState} = handle_line(Line, State),
       rpc_reply ! {reply, Reply},
@@ -60,7 +60,7 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
 
-handle_line(Line, State) -> 
+handle_line(Line, State) ->
   Msg = parse_line(Line),
   handle_msg(Msg, State).
 
@@ -130,9 +130,9 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
-reply(Dest, Body, State) -> 
+reply(Dest, Body, State) ->
   Reply = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   {reply, Reply, State}.
@@ -141,12 +141,12 @@ append(Key, Msg, Logs) ->
   CreateIfNotExists = {0,0,[]},
   {Length, Commit, List} = maps:get(Key, Logs, CreateIfNotExists),
   Offset = Length+1,
-  Appended = Logs#{Key => {Offset, Commit, [{Offset, Msg}]++List}}, 
+  Appended = Logs#{Key => {Offset, Commit, [{Offset, Msg}]++List}},
   {Offset, Appended}.
 
 read(Offsets, Logs) ->
   maps:fold(fun (K, From, AccIn) ->
-    case Logs of 
+    case Logs of
       #{K := {_Length, _Commit, Log}} ->
         %% Pred = fun({I,_}) -> I >= From andalso I > Commit end,
         Pred = fun({I,_}) -> I >= From end,
@@ -158,7 +158,7 @@ read(Offsets, Logs) ->
   end, #{}, Offsets).
 
 commit(Offsets, Logs) ->
-  maps:fold(fun (K, End, AccIn) -> 
+  maps:fold(fun (K, End, AccIn) ->
     case Logs of
       #{K := {Offset, Commit, Log}} when End > Commit ->
         AccIn#{K := {Offset, End, Log}};

@@ -24,7 +24,7 @@
                     Msgs::[{Offset::non_neg_integer(), any()}]}}
 }).
 
-main([]) -> 
+main([]) ->
   io:setopts(standard_io, [{binary, true}]),
   ServerPid = spawn_link(?MODULE, init, [server]),
   RpcOutPid = spawn_link(?MODULE, init, [rpcout]),
@@ -35,7 +35,7 @@ main([]) ->
 init(rpcout) -> rpcout();
 init(server) -> server(fun handle_msg/2, #state{}).
 
-loop(standard_io) -> 
+loop(standard_io) ->
   case io:get_line([]) of
     eof -> ok;
     {error, Reason} -> exit(Reason);
@@ -53,7 +53,7 @@ rpcout() ->
   end.
 
 server(Fn, State) ->
-  receive 
+  receive
     {line, Line} ->
       Msg = parse_line(Line),
       Reply = Fn(Msg, State),
@@ -105,7 +105,7 @@ handle_msg({~"commit_offsets", _Src, _Dest, _Body} = Msg, State) ->
 handle_msg({~"list_committed_offsets", _, _, _} = Msg, State) ->
   handle_list(Msg, State);
 handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
-  #{ReplyId := {Function, Data}} = State#state.callbacks, 
+  #{ReplyId := {Function, Data}} = State#state.callbacks,
   Callbacks0 = State#state.callbacks,
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{callbacks=Callbacks},
@@ -113,7 +113,7 @@ handle_msg({_,_,_, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_send({~"send", _, _, Body} = Send, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   #{<<"key">> := Key} = Body,
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_send, Send}},
@@ -132,7 +132,7 @@ handle_send({{~"error", ~"lin-kv", _Dest, Body}, Send}, State)
   %% TODO: expect `in_reply_to=msg_id`.
   handle_send({cas, -1, Send}, State);
 handle_send({cas, From, Send}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
 
@@ -149,7 +149,7 @@ handle_send({cas, From, Send}, State) ->
     <<"create_if_not_exists">> => true
   }, NewState);
 handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   {{Key, _, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
 
@@ -177,13 +177,13 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
     <<"in_reply_to">> => MsgId
   }, State).
 
-handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
+handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
   PollInfo = {maps:to_list(Offsets), #{}, Msg},
   %% TODO: link-kv read to get the tail offset.
   handle_poll({seq_read, PollInfo}, State);
 handle_poll({seq_read, {[Log|_], _, _Msg} = PollInfo}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   {Key, Offset} = Log,
 
   Callbacks0 = State#state.callbacks,
@@ -204,7 +204,7 @@ handle_poll({seq_read, {[], Msgs, Msg}}, State) ->
   }, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   #{~"value" := Value} = Body,
-  {Logs0, Data0, Msg} = PollInfo, 
+  {Logs0, Data0, Msg} = PollInfo,
   [{Key, Offset}|Ls]  = Logs0,
   List = maps:get(Key, Data0, []),
   Data = Data0#{Key => [[Offset, Value] | List]},
@@ -212,14 +212,14 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   handle_poll({seq_read, {Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[{Key,_}|Logs], Data0, Msg} = PollInfo, 
+  {[{Key,_}|Logs], Data0, Msg} = PollInfo,
   %% TODO: case Data0 of {}; or maps:get_or_default = []
-  Data = case Data0 of 
+  Data = case Data0 of
     #{Key := List} -> Data0#{Key => lists:reverse(List)};
     _ -> Data0
   end,
   %% #{Key := List}  = Data0,
-  %% Data = Data0#{Key => lists:reverse(List)}, 
+  %% Data = Data0#{Key => lists:reverse(List)},
   handle_poll({seq_read, {Logs, Data, Msg}}, State).
 
 
@@ -228,7 +228,7 @@ handle_commit({~"commit_offsets", _Src, _Dest, Body} = Msg, State) ->
   Info = {maps:to_list(Offsets), Msg},
   handle_commit({lin_read, Info}, State);
 handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   {Key, _Offset} = Log,
 
   Callbacks0 = State#state.callbacks,
@@ -243,12 +243,12 @@ handle_commit({lin_read, {[Log|_], _Msg} = Info}, State) ->
 handle_commit({lin_read, {[], Msg} = _Info}, State) ->
   {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
-    <<"type">> => <<"commit_offsets_ok">>, 
+    <<"type">> => <<"commit_offsets_ok">>,
     <<"in_reply_to">> => MsgId
   }, State);
 handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
-  {[{_Key,Offset}|Logs], Msg} = Info, 
+  {[{_Key,Offset}|Logs], Msg} = Info,
   if
     Offset >= Value -> handle_commit({cas, Value, Info}, State);
     true -> handle_commit({lin_read, {Logs, Msg}}, State)
@@ -259,7 +259,7 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% TODO: expect `in_reply_to=msg_id`.
   handle_commit({cas, -1, Info}, State);
 handle_commit({cas, From, Info}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
   {Logs, _Msg} = Info,
   [{Key, Offset}|_] = Logs,
 
@@ -287,7 +287,7 @@ handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
   #{<<"keys">> := Keys} = Body,
   handle_list({read_offsets, {Keys, #{}, Msg}}, State);
 handle_list({read_offsets, {[Key|_], _Offsets, _Msg} = Info}, State) ->
-  MsgId = erlang:unique_integer([monotonic, positive]), 
+  MsgId = erlang:unique_integer([monotonic, positive]),
 
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => {handle_list, Info}},
@@ -301,18 +301,18 @@ handle_list({read_offsets, {[Key|_], _Offsets, _Msg} = Info}, State) ->
 handle_list({read_offsets, {[], Offsets, Msg} = _Info}, State) ->
   {~"list_committed_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
-    <<"type">> => <<"list_committed_offsets_ok">>, 
+    <<"type">> => <<"list_committed_offsets_ok">>,
     <<"offsets">> => Offsets,
     <<"in_reply_to">> => MsgId
   }, State);
 handle_list({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
-  {[Key|Keys], Offsets, Msg} = Info, 
+  {[Key|Keys], Offsets, Msg} = Info,
   NewInfo = {Keys, Offsets#{Key => Value}, Msg},
   handle_list({read_offsets, NewInfo}, State);
 handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[Key|Keys], Offsets, Msg} = Info, 
+  {[Key|Keys], Offsets, Msg} = Info,
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
 
@@ -321,9 +321,9 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
-reply(Dest, Body, State) -> 
+reply(Dest, Body, State) ->
   Reply = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   {reply, Reply, State}.

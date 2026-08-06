@@ -14,14 +14,14 @@
 	topology=#{},
   timers=#{}}).
 
-main([]) -> 
+main([]) ->
   io:setopts(standard_io, [{binary, true}]),
 	register(server, spawn_link(?MODULE, init, [])),
   loop().
 
 loop() ->
   case io:get_line(?PROMPT) of
-    Line when is_binary(Line) -> 
+    Line when is_binary(Line) ->
 			server ! {line, Line},
       loop();
     eof ->
@@ -99,7 +99,7 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
 
   reply(Src, Dest, #{
     <<"type">> => <<"topology_ok">>,
-    <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
+    <<"msg_id">> => erlang:unique_integer([monotonic, positive]),
     <<"in_reply_to">> => MsgId
   }, NewState);
 
@@ -136,7 +136,7 @@ replicate(#state{node_id=Src} = State) ->
 
   lists:foreach(fun
     (Dest) when Dest =/= Src ->
-      MsgId =  erlang:unique_integer([monotonic, positive]), 
+      MsgId =  erlang:unique_integer([monotonic, positive]),
       broadcast_msg(MsgId, Src, Dest, Data);
     (_Src) -> ok
   end, NodeIds),
@@ -146,9 +146,9 @@ replicate(#state{node_id=Src} = State) ->
 reply(Dest, Src, Body, State) when State#state.node_id =:= Src ->
   reply(Dest, Body, State).
 
-reply(Dest, Body, State) -> 
+reply(Dest, Body, State) ->
   Reply = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   server_rpc ! {reply, Reply},
@@ -156,14 +156,14 @@ reply(Dest, Body, State) ->
 
 broadcast_msg(MsgId, Src, Dest, Message) ->
   Msg = #{
-    <<"dest">> => Dest, 
+    <<"dest">> => Dest,
     <<"src">>  => Src,
     <<"body">> => #{
       <<"type">>    => <<"broadcast">>,
       <<"msg_id">>  => MsgId,
       <<"message">> => Message}},
   server_rpc ! {rpc, Msg}.
- 
+
 handle_rpc(State) ->
   receive
     {rpc, Msg} ->
