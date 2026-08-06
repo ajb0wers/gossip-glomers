@@ -202,16 +202,15 @@ handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   }, NewState).
 
 % TODO:
-% -spec handle_poll(Info, State::#state) -> Result
-%              when
-%              Msg::{Tag, Src, Dest, Body},
-%              Key::binary(), Offset::non_negative_integer(),
-%              Msgs::#{Key::binary() := [[Key, Offset]]}
-%              Logs::[Owner, #{Key := Offset}]
-%              List::[{Key,Index::non_negative_integer()}]
-%              Info ::
-%                {loop {Logs, Data, Msg}} |
-%                {read_loop, {List, Logs, Msgs, Msg}}.
+% -spec handle_poll(Info, State::#state) -> Result when
+%       Msg :: {Tag, Src, Dest, Body},
+%       Key :: binary(), Offset::non_negative_integer(),
+%       Msgs :: #{Key::binary() := [[Key, Offset]]}
+%       Logs :: [Owner, #{Key := Offset}]
+%       List :: [{Key,Index::non_negative_integer()}]
+%       Info ::
+%         {loop {Logs, Data, Msg}} |
+%         {read_loop, {List, Logs, Msgs, Msg}}.
 handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) -> 
   #{<<"offsets">> := Offsets} = Body,
   Logs = maps:fold(fun (K, V, AccIn) ->
