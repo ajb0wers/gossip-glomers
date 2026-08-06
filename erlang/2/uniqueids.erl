@@ -2,13 +2,13 @@
 
 -define(PROMPT, "").
 
-main([]) -> 
+main([]) ->
   io:setopts(standard_io, [{binary, true}]),
   loop(null).
 
 loop(State) ->
   case io:get_line(?PROMPT) of
-    Line when is_binary(Line) -> 
+    Line when is_binary(Line) ->
       Msg = json:decode(Line),
       {Reply, NewState} = handle(Msg, State),
       MsgOut = json:encode(Reply),
@@ -32,7 +32,7 @@ handle(<<"init">>, {Src, Dest, Body}, _NodeId0) ->
 
   Reply = #{
     <<"src">>  => Dest,
-    <<"dest">> => Src, 
+    <<"dest">> => Src,
     <<"body">> => #{
       <<"type">> => <<"init_ok">>,
       <<"in_reply_to">> => MsgId
@@ -45,10 +45,10 @@ handle(<<"generate">>, {Src, Dest, Body}, NodeId) ->
 
   Reply = #{
     <<"src">>  => Dest,
-    <<"dest">> => Src, 
+    <<"dest">> => Src,
     <<"body">> => #{
       <<"type">> => <<"generate_ok">>,
-      <<"msg_id">> => erlang:unique_integer([monotonic, positive]), 
+      <<"msg_id">> => erlang:unique_integer([monotonic, positive]),
       <<"in_reply_to">> => MsgId,
       <<"id">> => binary:encode_hex(generate())
   }},
