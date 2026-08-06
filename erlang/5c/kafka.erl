@@ -139,19 +139,11 @@ handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
             #state{offsets=Offsets} = State)
        when is_map_key(Key, Offsets) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  %% Callbacks0 = State#state.callbacks,
-  %% Callbacks = Callbacks0#{MsgId => {handle_send, Msg}},
-  %% NewState = State#state{callbacks=Callbacks},
-  %% reply(~"lin-kv", #{
-  %%   <<"type">>   => <<"read">>,
-  %%   <<"key">>    => Key,
-  %%   <<"msg_id">> => MsgId
-  %% }, NewState);
   callback(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
-  }, State, {?FUNCTION_NAME, Msg});  
+  }, State, _EventData={?FUNCTION_NAME, Msg});  
 
 handle_send({{~"send",_,_,_} = Msg, {owner, _}}, State) ->
   handle_send({cas, -1, Msg}, State);
@@ -171,20 +163,7 @@ handle_send({cas, From, Send}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
-  %%
-  %% Callbacks0 = State#state.callbacks,
-  %% Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,From,Offset,N}, Send}}},
-  %% NewState = State#state{callbacks=Callbacks},
-  %%
-  %% reply(~"lin-kv", #{
-  %%   <<"type">>   => <<"cas">>,
-  %%   <<"key">>    => Key,
-  %%   <<"from">>   => From,
-  %%   <<"to">>     => Offset,
-  %%   <<"msg_id">> => MsgId,
-  %%   <<"create_if_not_exists">> => true
-  %% }, NewState);
-  Info = {?FUNCTION_NAME, {{Key,From,Offset,N}, Send}},
+  EventData = {?FUNCTION_NAME, {{Key,From,Offset,N}, Send}},
   callback(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => Key,
@@ -192,32 +171,20 @@ handle_send({cas, From, Send}, State) ->
     <<"to">>     => Offset,
     <<"msg_id">> => MsgId,
     <<"create_if_not_exists">> => true
-  }, State, Info);
-handle_send({{~"cas_ok", ~"lin-kv", Dest, _Body}, Info}, State) ->
+  }, State, EventData);
+handle_send({{~"cas_ok", ~"lin-kv", _Dest, _Body}, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {{Key, _From, Offset, _N}, Msg} = Info,
   {~"send", _,_, #{<<"msg">> := Value}} = Msg,
   Offsets = maps:merge(#{Key => 0}, State#state.offsets),
-
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_send, {{Key,Value,Offset}, Msg}}},
-  NewState = State#state{callbacks=Callbacks, offsets=Offsets},
-  
-  reply(~"seq-kv", Dest, #{
+  EventData = {?FUNCTION_NAME, {{Key,Value,Offset}, Msg}},
+  NewState = State#state{offsets=Offsets},
+  callback(~"seq-kv", #{
     <<"type">> => <<"write">>,
     <<"key">> => [Key,Offset],
     <<"value">> => Value,
     <<"msg_id">> => MsgId
-  }, NewState);
-
-  %% Info = {?FUNCTION_NAME, {{Key,Value,Offset}, Msg}},
-  %% NewState = State#state{offsets=Offsets},
-  %% callback(~"seq-kv", #{
-  %%   <<"type">> => <<"write">>,
-  %%   <<"key">> => [Key,Offset],
-  %%   <<"value">> => Value,
-  %%   <<"msg_id">> => MsgId
-  %% }, NewState, Info);
+  }, NewState, EventData);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
        when ?RPC_PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
@@ -262,14 +229,11 @@ handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
 handle_poll({loop, {[{Owner,Offsets}|_], _, _} = Info},
             #state{id=Id} = State) when Owner /= Id -> 
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_poll, Info}},
-  NewState = State#state{callbacks=Callbacks},
-  reply(Owner, #{
+  callback(Owner, #{
     <<"type">>    => <<"poll">>, 
     <<"msg_id">>  => MsgId,
     <<"offsets">> => Offsets
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, Info});
 handle_poll({loop, {[{_Owner,Offsets}|Logs], Msgs, Msg} = _Info},
             #state{id=_Id} = State) -> 
   List = maps:to_list(Offsets),
@@ -293,14 +257,11 @@ handle_poll({read_loop, {[{Key,Index}|List], Logs, Data, Msg} = _Info},
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_poll, PollInfo}},
-  NewState = State#state{callbacks=Callbacks},
-  reply(~"seq-kv", #{
+  callback(~"seq-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [Key,Offset],
     <<"msg_id">> => MsgId
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, PollInfo});
 handle_poll({read_loop, {[], Logs, Msgs, Msg}}, State) ->
   handle_poll({loop, {Logs, Msgs, Msg}}, State);
 handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
@@ -331,14 +292,11 @@ handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
 handle_commit({loop, {[{Owner,Offsets}|_], _Msg} = Info},
               #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
-  NewState = State#state{callbacks=Callbacks},
-  reply(Owner, #{
+  callback(Owner, #{
     <<"type">>    => <<"commit_offsets">>, 
     <<"msg_id">>  => MsgId,
     <<"offsets">> => Offsets
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, Info});
 handle_commit({loop, {[], Msg} = _Info}, State) ->
   {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
@@ -356,16 +314,11 @@ handle_commit({lin_read, {[], [_|Logs], Msg} = _Info}, State) ->
   handle_commit({loop, {Logs, Msg}}, State); 
 handle_commit({lin_read, {[{Key,_}|_], _, _} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
-  NewState = State#state{callbacks=Callbacks},
-
-  reply(~"lin-kv", #{
+  callback(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [<<"commit_offset">>,Key],
     <<"msg_id">> => MsgId
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, Info});
 handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   #{~"value" := Value} = Body,
   {[{_Key,Offset}|Logs], Owners, Msg} = Info, 
@@ -381,19 +334,14 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {[{Key, Offset}|_], _Owners, _Msg} = Info,
-
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_commit, Info}},
-  NewState = State#state{callbacks=Callbacks},
-
-  reply(~"lin-kv", #{
+  callback(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => [<<"commit_offset">>, Key],
     <<"from">>   => From,
     <<"to">>     => Offset,
     <<"msg_id">> => MsgId,
     <<"create_if_not_exists">> => true
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, Info});
 handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
   {[{Key,Offset}|Logs], Owners, Msg} = Info,
   Value = maps:get(Key, State#state.commits, 0),
@@ -409,16 +357,11 @@ handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
   handle_list({read_offsets, {Keys, #{}, Msg}}, State);
 handle_list({read_offsets, {[Key|_], _Offsets, _Msg} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-
-  Callbacks0 = State#state.callbacks,
-  Callbacks = Callbacks0#{MsgId => {handle_list, Info}},
-  NewState = State#state{callbacks=Callbacks},
-
-  reply(~"lin-kv", #{
+  callback(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [<<"commit_offset">>, Key],
     <<"msg_id">> => MsgId
-  }, NewState);
+  }, State, _EventData={?FUNCTION_NAME, Info});
 handle_list({read_offsets, {[], Offsets, Msg} = _Info}, State) ->
   {~"list_committed_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
@@ -447,12 +390,12 @@ reply(Dest, Body, #state{} = State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-callback(Dest, Body, #state{} = State, {_Fun, _Data} = Info) ->
+callback(Dest, Body, #state{} = State, {_Fun, _Data} = EventData) ->
   Request = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.id,
     <<"body">> => Body},
-  {noreply, State, {rpc, Request, Info}}.
+  {noreply, State, {rpc, Request, EventData}}.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
