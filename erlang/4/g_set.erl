@@ -7,51 +7,51 @@
 -define(FORMAT, "~s~n").
 
 -record(state, {
-	node_id=null,
-	node_ids=[],
-	data=sets:new(),
-  messages=[],
-	topology=#{},
-  timers=#{}}).
+  node_id = null,
+  node_ids = [],
+  data = sets:new(),
+  messages = [],
+  topology = #{},
+  timers = #{}}).
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
-	register(server, spawn_link(?MODULE, init, [])),
+  register(server, spawn_link(?MODULE, init, [])),
   loop().
 
 loop() ->
   case io:get_line(?PROMPT) of
     Line when is_binary(Line) ->
-			server ! {line, Line},
+      server ! {line, Line},
       loop();
     eof ->
       stop()
   end.
 
 stop() ->
-	server ! {eof, self()},
-	receive ok -> erlang:halt(0) end.
+  server ! {eof, self()},
+  receive ok -> erlang:halt(0) end.
 
 init() ->
-	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
+  register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
   timer:send_interval(5000, server, {info, broadcast}),
-	server(#state{}).
+  server(#state{}).
 
 server(State) ->
-	receive
-		{line, Line} ->
+  receive
+    {line, Line} ->
       Msg = json:decode(Line),
-			{ok, NewState} = handle_line(Msg, State),
-			server(NewState);
-		{info, Msg} ->
-			{ok, NewState} = handle_info(Msg, State),
-			server(NewState);
-		{eof, From} ->
-			self() ! {stop, From},
-			server(State);
-		{stop, From} ->
-			From ! ok
-	end.
+      {ok, NewState} = handle_line(Msg, State),
+      server(NewState);
+    {info, Msg} ->
+      {ok, NewState} = handle_info(Msg, State),
+      server(NewState);
+    {eof, From} ->
+      self() ! {stop, From},
+      server(State);
+    {stop, From} ->
+      From ! ok
+  end.
 
 
 handle_line(Msg, State) ->
@@ -68,13 +68,13 @@ handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
   reply(Src, Dest, #{
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
-  }, #state{node_id=NodeId, node_ids=NodeIds});
+  }, #state{node_id = NodeId, node_ids = NodeIds});
 
 
 handle(~"add", {Src, Dest, Body}, State) ->
   #{<<"msg_id">> := MsgId, <<"element">> := Element} = Body,
   Data = sets:add_element(Element, State#state.data),
-  NewState = State#state{data=Data},
+  NewState = State#state{data = Data},
   reply(Src, Dest, #{
     <<"type">> => <<"add_ok">>,
     <<"in_reply_to">> => MsgId
@@ -95,7 +95,7 @@ handle(~"topology" = Tag, {Src, Dest, Body}, State) ->
     <<"msg_id">>   := MsgId,
     <<"topology">> := Topology} = Body,
 
-  NewState = State#state{topology=Topology},
+  NewState = State#state{topology = Topology},
 
   reply(Src, Dest, #{
     <<"type">> => <<"topology_ok">>,
@@ -125,12 +125,12 @@ handle_info(broadcast, State) -> replicate(State).
 
 handle_broadcast(List, State) when is_list(List) ->
   Data = sets:union(State#state.data, sets:from_list(List)),
-  {ok, State#state{data=Data}};
+  {ok, State#state{data = Data}};
 handle_broadcast(Message, State) ->
   Data = sets:add_element(Message, State#state.data),
-  {ok, State#state{data=Data}}.
+  {ok, State#state{data = Data}}.
 
-replicate(#state{node_id=Src} = State) ->
+replicate(#state{node_id = Src} = State) ->
   NodeIds = State#state.node_ids,
   Data = sets:to_list(State#state.data),
 
@@ -152,7 +152,7 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   server_rpc ! {reply, Reply},
-	{ok, State}.
+  {ok, State}.
 
 broadcast_msg(MsgId, Src, Dest, Message) ->
   Msg = #{

@@ -7,49 +7,49 @@
 -define(FORMAT, "~s~n").
 
 -record(state, {
-	node_id  = null :: 'null' | integer(),
-	node_ids = []   :: list(),
-	inc     = #{}   :: map(),
-	dec     = #{}   :: map()
+  node_id  = null :: 'null' | integer(),
+  node_ids = []   :: list(),
+  inc     = #{}   :: map(),
+  dec     = #{}   :: map()
 }).
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
-	register(server, spawn_link(?MODULE, init, [])),
+  register(server, spawn_link(?MODULE, init, [])),
   loop().
 
 loop() ->
   case io:get_line(?PROMPT) of
     Line when is_binary(Line) ->
-			server ! {line, Line},
+      server ! {line, Line},
       loop();
     eof ->
       stop()
   end.
 
 init() ->
-	register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
+  register(server_rpc, spawn_link(?MODULE, handle_rpc, [#{}])),
   timer:send_interval(5000, server, {info, broadcast}),
-	server(#state{}).
+  server(#state{}).
 
 server(State) ->
-	receive
-		{line, Line} ->
-			{ok, NewState} = handle_line(Line, State),
-			server(NewState);
-		{info, Msg} ->
-			{ok, NewState} = handle_info(Msg, State),
-			server(NewState);
-		{eof, From} ->
-			self() ! {stop, From},
-			server(State);
-		{stop, From} ->
-			From ! ok
-	end.
+  receive
+    {line, Line} ->
+      {ok, NewState} = handle_line(Line, State),
+      server(NewState);
+    {info, Msg} ->
+      {ok, NewState} = handle_info(Msg, State),
+      server(NewState);
+    {eof, From} ->
+      self() ! {stop, From},
+      server(State);
+    {stop, From} ->
+      From ! ok
+  end.
 
 stop() ->
-	server ! {eof, self()},
-	receive ok -> erlang:halt(0) end.
+  server ! {eof, self()},
+  receive ok -> erlang:halt(0) end.
 
 handle_line(Line, State) ->
   Msg = json:decode(Line),
@@ -83,10 +83,10 @@ handle_msg(~"add", {Src, Dest, Body}, State) ->
   NewState = if
     Delta > 0 ->
       Inc = State#state.inc, #{NodeId := P} = Inc,
-      State#state{inc=Inc#{NodeId := P+Delta}};
+      State#state{inc = Inc#{NodeId := P+Delta}};
     Delta < 0 ->
       Dec = State#state.dec, #{NodeId := N} = Dec,
-      State#state{dec=Dec#{NodeId := N+abs(Delta)}};
+      State#state{dec = Dec#{NodeId := N+abs(Delta)}};
     Delta == 0 -> State
   end,
 
@@ -111,7 +111,7 @@ handle_msg(~"read", {Src, Dest, Body}, State) ->
 handle_msg(~"broadcast", {_Src, _Dest, Body}, State) ->
   #{<<"message">> := Message} = Body,
   {Inc, Dec} = merge(Message, State),
-  {ok, State#state{inc=Inc, dec=Dec}};
+  {ok, State#state{inc = Inc, dec = Dec}};
 
 handle_msg(~"broadcast_ok", {_, _, _Body}, State) ->
   {ok, State};
@@ -122,14 +122,14 @@ handle_info(broadcast, State) ->
   replicate(State), {ok, State}.
 
 
-merge(Message, #state{inc=IncIn, dec=DecIn}) when is_map(Message) ->
+merge(Message, #state{inc = IncIn, dec = DecIn}) when is_map(Message) ->
   Combiner = fun(_K, V1, V2) -> max(V1, V2) end,
   #{<<"inc">> := Inc0, <<"dec">> := Dec0} = Message,
   Inc = maps:merge_with(Combiner, Inc0, IncIn),
   Dec = maps:merge_with(Combiner, Dec0, DecIn),
   {Inc, Dec}.
 
-replicate(#state{node_id=Src} = State) ->
+replicate(#state{node_id = Src} = State) ->
   NodeIds = State#state.node_ids,
   Message = #{
      <<"inc">> => State#state.inc,
@@ -151,7 +151,7 @@ reply(Dest, Body, State) ->
     <<"src">>  => State#state.node_id,
     <<"body">> => Body},
   server_rpc ! {reply, Reply},
-	{ok, State}.
+  {ok, State}.
 
 broadcast_msg(Src, Dest, Message) ->
   Msg = #{
