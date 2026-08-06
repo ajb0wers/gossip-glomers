@@ -81,17 +81,12 @@ server_reply(_Fn, stop) ->
 handle_msg(Line, State)  when is_binary(Line) ->  
   {noreply, State, parse_line(Line)};
 
-handle_msg({~"init", Src, Dest, Body}, State) ->
+handle_msg({~"init", Src, _Dest, Body}, State) ->
   #{<<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
     <<"node_ids">> := NodeIds} = Body,
-
-  NewState = State#state{
-    id  = NodeId,
-    nodes = NodeIds
-  },
-
-  reply(Src, Dest, #{
+  NewState = State#state{id=NodeId, nodes=NodeIds},
+  reply(Src, #{
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
   }, NewState);
@@ -125,8 +120,8 @@ handle_send({~"send",_,_,Body} = Msg, State) ->
 handle_send({{~"send", _, _, Body}, {owner, Owner}} = Send,
             #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  Info = {?FUNCTION_NAME, Send},
-  callback(Owner, Body#{<<"msg_id">> => MsgId}, State, Info);
+  EventData = {?FUNCTION_NAME, Send},
+  reply(Owner, Body#{<<"msg_id">> => MsgId}, State, EventData);
 handle_send({{~"send_ok",_,_,Body}, Info}, State) ->
   {{~"send", Src, _, #{~"msg_id":=MsgId}} ,_} = Info,
   #{<<"offset">> := Offset} = Body,
@@ -139,7 +134,7 @@ handle_send({{~"send",_,_,#{<<"key">> := Key}} = Msg, {owner, _}},
             #state{offsets=Offsets} = State)
        when is_map_key(Key, Offsets) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(~"lin-kv", #{
+  reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => Key,
     <<"msg_id">> => MsgId
@@ -164,7 +159,7 @@ handle_send({cas, From, Send}, State) ->
   {~"send", _, _, #{<<"key">> := Key}} = Send,
   N = 1, Offset = From + N,
   EventData = {?FUNCTION_NAME, {{Key,From,Offset,N}, Send}},
-  callback(~"lin-kv", #{
+  reply(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => Key,
     <<"from">>   => From,
@@ -179,7 +174,7 @@ handle_send({{~"cas_ok", ~"lin-kv", _Dest, _Body}, Info}, State) ->
   Offsets = maps:merge(#{Key => 0}, State#state.offsets),
   EventData = {?FUNCTION_NAME, {{Key,Value,Offset}, Msg}},
   NewState = State#state{offsets=Offsets},
-  callback(~"seq-kv", #{
+  reply(~"seq-kv", #{
     <<"type">> => <<"write">>,
     <<"key">> => [Key,Offset],
     <<"value">> => Value,
@@ -195,14 +190,14 @@ handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   handle_send(Msg, NewState);
 handle_send({{~"write_ok", ~"seq-kv", _, _}, Info}, State) ->
   {{Key, _, Offset}, Msg} = Info,
-  {~"send", Src, Dest, #{<<"msg_id">> := MsgId}} = Msg,
+  {~"send", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   MaxOffset = fun (V) -> max(V, Offset) end, 
   Offsets0 = State#state.offsets,
   Offsets = maps:update_with(Key, MaxOffset, 0, Offsets0),
   NewState = State#state{offsets=Offsets},
-  reply(Src, Dest, #{
-    <<"type">> => <<"send_ok">>,
-    <<"offset">> => Offset,
+  reply(Src, #{
+    <<"type">>        => <<"send_ok">>,
+    <<"offset">>      => Offset,
     <<"in_reply_to">> => MsgId
   }, NewState).
 
@@ -229,7 +224,7 @@ handle_poll({~"poll", _Src, _Dest, Body} = Msg, State) ->
 handle_poll({loop, {[{Owner,Offsets}|_], _, _} = Info},
             #state{id=Id} = State) when Owner /= Id -> 
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(Owner, #{
+  reply(Owner, #{
     <<"type">>    => <<"poll">>, 
     <<"msg_id">>  => MsgId,
     <<"offsets">> => Offsets
@@ -257,7 +252,7 @@ handle_poll({read_loop, {[{Key,Index}|List], Logs, Data, Msg} = _Info},
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({read_loop, {[{Key,Offset}|_], _, _, _Msg} = PollInfo}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(~"seq-kv", #{
+  reply(~"seq-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [Key,Offset],
     <<"msg_id">> => MsgId
@@ -292,7 +287,7 @@ handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
 handle_commit({loop, {[{Owner,Offsets}|_], _Msg} = Info},
               #state{id=Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(Owner, #{
+  reply(Owner, #{
     <<"type">>    => <<"commit_offsets">>, 
     <<"msg_id">>  => MsgId,
     <<"offsets">> => Offsets
@@ -314,7 +309,7 @@ handle_commit({lin_read, {[], [_|Logs], Msg} = _Info}, State) ->
   handle_commit({loop, {Logs, Msg}}, State); 
 handle_commit({lin_read, {[{Key,_}|_], _, _} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(~"lin-kv", #{
+  reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [<<"commit_offset">>,Key],
     <<"msg_id">> => MsgId
@@ -334,7 +329,7 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
 handle_commit({cas, From, Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
   {[{Key, Offset}|_], _Owners, _Msg} = Info,
-  callback(~"lin-kv", #{
+  reply(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => [<<"commit_offset">>, Key],
     <<"from">>   => From,
@@ -357,7 +352,7 @@ handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
   handle_list({read_offsets, {Keys, #{}, Msg}}, State);
 handle_list({read_offsets, {[Key|_], _Offsets, _Msg} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]), 
-  callback(~"lin-kv", #{
+  reply(~"lin-kv", #{
     <<"type">>   => <<"read">>,
     <<"key">>    => [<<"commit_offset">>, Key],
     <<"msg_id">> => MsgId
@@ -380,9 +375,6 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
 
-reply(Dest, Src, Body, State) when State#state.id =:= Src ->
-  reply(Dest, Body, State).
-
 reply(Dest, Body, #state{} = State) -> 
   Reply = #{
     <<"dest">> => Dest, 
@@ -390,7 +382,7 @@ reply(Dest, Body, #state{} = State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-callback(Dest, Body, #state{} = State, {_Fun, _Data} = EventData) ->
+reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
   Request = #{
     <<"dest">> => Dest, 
     <<"src">>  => State#state.id,
