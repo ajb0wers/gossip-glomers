@@ -83,10 +83,10 @@ handle_msg(~"add", {Src, Dest, Body}, State) ->
   NewState = if
     Delta > 0 ->
       Inc = State#state.inc, #{NodeId := P} = Inc,
-      State#state{inc = Inc#{NodeId := P+Delta}};
+      State#state{inc = Inc#{NodeId := P + Delta}};
     Delta < 0 ->
       Dec = State#state.dec, #{NodeId := N} = Dec,
-      State#state{dec = Dec#{NodeId := N+abs(Delta)}};
+      State#state{dec = Dec#{NodeId := N + abs(Delta)}};
     Delta == 0 -> State
   end,
 
@@ -165,10 +165,10 @@ broadcast_msg(Src, Dest, Message) ->
 handle_rpc(State) ->
   receive
     {rpc, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     {rpc, Msg, Id, Time} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
       NewState = State#{Id => TRef},
       handle_rpc(NewState);
@@ -178,7 +178,7 @@ handle_rpc(State) ->
       NewState = maps:remove(Id, State),
       handle_rpc(NewState);
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     _ ->
       handle_rpc(State)

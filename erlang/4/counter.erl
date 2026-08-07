@@ -151,10 +151,10 @@ broadcast_msg(MsgId, Src, Dest, Message) ->
 handle_rpc(State) ->
   receive
     {rpc, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     {rpc, Msg, Id, Time} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
       NewState = State#{Id => TRef},
       handle_rpc(NewState);
@@ -164,7 +164,7 @@ handle_rpc(State) ->
       NewState = maps:remove(Id, State),
       handle_rpc(NewState);
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     _ ->
       handle_rpc(State)

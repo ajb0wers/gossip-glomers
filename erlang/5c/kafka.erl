@@ -52,7 +52,7 @@ rpcout() ->
   receive
     Msg ->
       Reply = json:encode(Msg),
-      io:format("~s~n", [Reply]),
+      io:fwrite("~s~n", [Reply]),
       rpcout()
   end.
 

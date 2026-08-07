@@ -126,15 +126,15 @@ handle(~"broadcast_ok", {_, _, Body}, State) ->
 handle(_Tag, _Msg, State) -> {ok, State}.
 
 handle_info({reply, Reply}, State) ->
-  io:format(?FORMAT, [json:encode(Reply)]),
+  io:fwrite(?FORMAT, [json:encode(Reply)]),
   {ok, State};
 
 handle_info({rpc, Msg}, State) ->
-  io:format(?FORMAT, [json:encode(Msg)]),
+  io:fwrite(?FORMAT, [json:encode(Msg)]),
   {ok, State};
 
 handle_info({rpc, Msg, Id, Time} = Info, #state{timers = Timers} = State) ->
-  io:format(?FORMAT, [json:encode(Msg)]),
+  io:fwrite(?FORMAT, [json:encode(Msg)]),
   {ok, TRef} = timer:send_after(Time, {info, Info}),
   NewState = State#state{timers = Timers#{Id => TRef}},
   {ok, NewState}.
@@ -181,7 +181,7 @@ broadcast_msg(MsgId, Src, Dest, Message) ->
 handle_rpc(State) ->
   receive
     {rpc, Msg, Id, Time} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
       NewState = State#{Id => TRef},
       handle_rpc(NewState);
@@ -191,7 +191,7 @@ handle_rpc(State) ->
       NewState = maps:remove(Id, State),
       handle_rpc(NewState);
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     _ ->
       handle_rpc(State)

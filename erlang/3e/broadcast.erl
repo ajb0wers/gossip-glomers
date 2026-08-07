@@ -72,19 +72,6 @@ handle(~"init" = Tag, {Src, Dest, Body}, _State) ->
 handle(~"broadcast", {Src, Dest, Body}, State) ->
   #{<<"msg_id">> := MsgId, <<"message">> := Message} = Body,
   {ok, NewState} = handle_broadcast({Src, Dest, MsgId, Message}, State),
-
-  %% case lists:member(Message, State#state.data) of
-  %%   true ->
-  %%     State;
-  %%   _ ->
-  %%     Data = [Message | State#state.data],
-  %%     Messages = State#state.messages,
-  %%     List = gossip1(Src, Message, State),
-  %%     NewState0 = State#state{data = Data, messages = List++Messages},
-  %%     gossip(Src, Message, NewState0),
-  %%     NewState0
-  %% end,
-
   reply(Src, Dest, #{
     <<"type">> => <<"broadcast_ok">>,
     <<"msg_id">> => erlang:unique_integer([monotonic, positive]),
@@ -137,7 +124,7 @@ handle_info(broadcast, #state{node_id = Src, messages = Msgs} = State) ->
 
 handle_broadcast({Src, Dest, MsgId, List}, State) when is_list(List) ->
   lists:foldl(fun (Message, {ok, StateIn}) ->
-    {ok, _} = handle_broadcast({MsgId, Src, Dest, Message}, StateIn)
+    {ok, _} = handle_broadcast({Src, Dest, MsgId, Message}, StateIn)
   end, {ok, State}, List);
 
 handle_broadcast({Src, _Dest, _MsgId, Message}, State) ->
@@ -187,7 +174,7 @@ broadcast_msg(MsgId, Src, Dest, Message) ->
 handle_rpc(State) ->
   receive
     {rpc, Msg, Id, Time} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       {ok, TRef} = timer:send_after(Time, {rpc, Msg, Id, Time}),
       NewState = State#{Id => TRef},
       handle_rpc(NewState);
@@ -197,7 +184,7 @@ handle_rpc(State) ->
       NewState = maps:remove(Id, State),
       handle_rpc(NewState);
     {reply, Msg} ->
-      io:format(?FORMAT, [json:encode(Msg)]),
+      io:fwrite(?FORMAT, [json:encode(Msg)]),
       handle_rpc(State);
     _ ->
       handle_rpc(State)

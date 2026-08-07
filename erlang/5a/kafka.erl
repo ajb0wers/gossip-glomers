@@ -48,7 +48,7 @@ rpc_reply(State) ->
   receive
     {reply, Msg} ->
       Reply = json:encode(Msg),
-      io:format("~s~n", [Reply]),
+      io:fwrite("~s~n", [Reply]),
       rpc_reply(State)
   end.
 
