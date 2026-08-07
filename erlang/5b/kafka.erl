@@ -109,7 +109,7 @@ handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   Callbacks0 = State#state.callbacks,
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{callbacks = Callbacks},
-  ?MODULE:Function({Msg, Data}, NewState);
+  erlang:apply(?MODULE, Function, [{Msg, Data}, NewState]);
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_send({~"send", _, _, Body} = Send, State) ->
