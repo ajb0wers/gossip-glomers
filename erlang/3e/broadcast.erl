@@ -126,8 +126,8 @@ handle_broadcast({Src, Dest, MsgId, List}, State) when is_list(List) ->
   lists:foldl(fun (Message, {ok, StateIn}) ->
     {ok, _} = handle_broadcast1({Src, Dest, MsgId, Message}, StateIn)
   end, {ok, State}, List);
-handle_broadcast({Src, Dest, MsgId, List}, State) ->
-   handle_broadcast1({Src, Dest, MsgId, Message}, StateIn).
+handle_broadcast({Src, Dest, MsgId, Message}, State) ->
+   handle_broadcast1({Src, Dest, MsgId, Message}, State).
 
 handle_broadcast1({Src, _Dest, _MsgId, Message}, State) ->
   NewState = case lists:member(Message, State#state.data) of
