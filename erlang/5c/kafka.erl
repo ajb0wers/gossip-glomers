@@ -331,13 +331,6 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
-read_offsets(Key, MsgId, State, EventData) ->
-  reply(~"lin-kv", #{
-    <<"type">>   => <<"read">>,
-    <<"key">>    => [<<"commit_offset">>, Key],
-    <<"msg_id">> => MsgId
-  }, State, EventData).
-
 handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
   #{<<"keys">> := Keys} = Body,
   handle_list({read_offsets, {Keys, #{}, Msg}}, State);
@@ -361,6 +354,13 @@ handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   {[Key | Keys], Offsets, Msg} = Info,
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).
+
+read_offsets(Key, MsgId, State, EventData) ->
+  reply(~"lin-kv", #{
+    <<"type">>   => <<"read">>,
+    <<"key">>    => [<<"commit_offset">>, Key],
+    <<"msg_id">> => MsgId
+  }, State, EventData).
 
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
