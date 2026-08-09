@@ -3,14 +3,14 @@ set -euo pipefail
 
 
 kafka() {
-  send '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n0","n1"]}}'
-  # {"body":{"in_reply_to":1,"type":"init_ok"},"dest":"c1","src":"n1"}
-
-
   # 1> owner(<<"k1">>, [<<"n0">>, <<"n1">>]).
   # <<"n1">>
   # 2> owner(<<"k2">>, [<<"n0">>, <<"n1">>]).
   # <<"n0">>
+
+  send '{"src":"c1","dest":"n1","body":{"msg_id":1,"type":"init","node_id":"n1","node_ids":["n0","n1"]}}'
+  # {"body":{"in_reply_to":1,"type":"init_ok"},"dest":"c1","src":"n1"}
+
   send '{"src":"c1","dest":"n1","body":{"msg_id":2,"type":"send","key":"k1","msg":9}}'
   # {"body":{"create_if_not_exists":true,"from":-1,"key":"k1","msg_id":1,"to":0,"type":"cas"},"dest":"lin-kv","src":"n1"}
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":1,"type":"cas_ok"}}'
@@ -68,7 +68,7 @@ kafka() {
 
 send() { printf "%s\n" "${1}"; }
 
-"${@:-kafka}" | ./kafka.erl
+"${@:-kafka}" | stdbuf -oL ./kafka.erl
 
 
 
