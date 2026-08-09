@@ -298,11 +298,7 @@ handle_commit({lin_read, {[], [_ | Logs], Msg} = _Info}, State) ->
   handle_commit({loop, {[], Logs, Msg}}, State);
 handle_commit({lin_read, {[{Key, _} | _], _, _} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]),
-  reply(~"lin-kv", #{
-    <<"type">>   => <<"read">>,
-    <<"key">>    => [<<"commit_offset">>, Key],
-    <<"msg_id">> => MsgId
-  }, State, _EventData = {?FUNCTION_NAME, Info});
+  read_offsets(Key, MsgId, State, {?FUNCTION_NAME, Info});
 handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body},
                {[{_, Offset} | Logs], Owners, Msg} = Info}, State) ->
   #{~"value" := Value} = Body,
@@ -335,16 +331,19 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
+read_offsets(Key, MsgId, State, EventData) ->
+  reply(~"lin-kv", #{
+    <<"type">>   => <<"read">>,
+    <<"key">>    => [<<"commit_offset">>, Key],
+    <<"msg_id">> => MsgId
+  }, State, EventData).
+
 handle_list({~"list_committed_offsets", _Src, _Dest, Body} = Msg, State) ->
   #{<<"keys">> := Keys} = Body,
   handle_list({read_offsets, {Keys, #{}, Msg}}, State);
 handle_list({read_offsets, {[Key | _], _Offsets, _Msg} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]),
-  reply(~"lin-kv", #{
-    <<"type">>   => <<"read">>,
-    <<"key">>    => [<<"commit_offset">>, Key],
-    <<"msg_id">> => MsgId
-  }, State, _EventData = {?FUNCTION_NAME, Info});
+  read_offsets(Key, MsgId, State, {?FUNCTION_NAME, Info});
 handle_list({read_offsets, {[], Offsets, Msg} = _Info}, State) ->
   {~"list_committed_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
