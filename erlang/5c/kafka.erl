@@ -270,9 +270,10 @@ handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
 handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
   Logs = owner_offsets(Offsets, State#state.nodes),
-  Info = {maps:to_list(Logs), Msg},
-  handle_commit({loop, Info}, State);
-handle_commit({loop, {[{Owner, Offsets} | _], _Msg} = Info},
+  %% {Offsets::[], [{Owner, Logs::#{}], Msg}
+  EventData = {[], maps:to_list(Logs), Msg},
+  handle_commit({loop, EventData}, State);
+handle_commit({loop, {[], [{Owner, Offsets} | _], _Msg} = Info},
               #state{id = Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(Owner, #{
@@ -280,21 +281,20 @@ handle_commit({loop, {[{Owner, Offsets} | _], _Msg} = Info},
     <<"msg_id">>  => MsgId,
     <<"offsets">> => Offsets
   }, State, _EventData = {?FUNCTION_NAME, Info});
-handle_commit({loop, {[], Msg} = _Info}, State) ->
+handle_commit({loop, {_, [], Msg} = _Info}, State) ->
   {~"commit_offsets", Src, _Dest, #{<<"msg_id">> := MsgId}} = Msg,
   reply(Src, #{
     <<"type">> => <<"commit_offsets_ok">>,
     <<"in_reply_to">> => MsgId
   }, State);
-handle_commit({loop, {Logs, Msg}}, State) ->
+handle_commit({loop, {[], Logs, Msg}}, State) ->
    [{_Owner, Offsets} | _] = Logs,
    Info = {maps:to_list(Offsets), Logs, Msg},
    handle_commit({lin_read, Info}, State);
-handle_commit({{~"commit_offsets_ok", _, _, _}, {[_ | Logs], Msg}}, State) ->
-  handle_commit({loop, {Logs, Msg}}, State);
-
+handle_commit({{~"commit_offsets_ok", _, _, _}, {_, [_ | Logs], Msg}}, State) ->
+  handle_commit({loop, {[], Logs, Msg}}, State);
 handle_commit({lin_read, {[], [_ | Logs], Msg} = _Info}, State) ->
-  handle_commit({loop, {Logs, Msg}}, State);
+  handle_commit({loop, {[], Logs, Msg}}, State);
 handle_commit({lin_read, {[{Key, _} | _], _, _} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
