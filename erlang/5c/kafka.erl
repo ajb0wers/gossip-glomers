@@ -261,18 +261,19 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   Data = Data0#{Key => [[Offset, Value] | List0]},
   List = [{Key, Offset + 1} | Ls],
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
-handle_poll({{~"error", ~"seq-kv", _Dest, Body}, PollInfo}, State)
+handle_poll({{~"error", ~"seq-kv", _Dest, Body},
+             {[{_, _} | List], Logs, Data, Msg}}, State)
        when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
-  {[{_Key, _Offset} | List], Logs, Data, Msg} = PollInfo,
+  % {[{_Key, _Offset} | List], Logs, Data, Msg} = PollInfo,
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State).
 
 
 handle_commit({~"commit_offsets", _, _, Body} = Msg, State) ->
   #{<<"offsets">> := Offsets} = Body,
   Logs = owner_offsets(Offsets, State#state.nodes),
-  %% {Offsets::[], [{Owner, Logs::#{}], Msg}
-  EventData = {[], maps:to_list(Logs), Msg},
-  handle_commit({loop, EventData}, State);
+  %% Info :: {Offsets :: [], [{Owner, Logs :: #{}], Msg}
+  Info = {[], maps:to_list(Logs), Msg},
+  handle_commit({loop, Info}, State);
 handle_commit({loop, {[], [{Owner, Offsets} | _], _Msg} = Info},
               #state{id = Id} = State) when Owner /= Id ->
   MsgId = erlang:unique_integer([monotonic, positive]),
@@ -302,9 +303,9 @@ handle_commit({lin_read, {[{Key, _} | _], _, _} = Info}, State) ->
     <<"key">>    => [<<"commit_offset">>, Key],
     <<"msg_id">> => MsgId
   }, State, _EventData = {?FUNCTION_NAME, Info});
-handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
+handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body},
+               {[{_, Offset} | Logs], Owners, Msg} = Info}, State) ->
   #{~"value" := Value} = Body,
-  {[{_Key, Offset} | Logs], Owners, Msg} = Info,
   case Offset > Value of
     true -> handle_commit({cas, Value, Info}, State);
     _Else -> handle_commit({lin_read, {Logs, Owners, Msg}}, State)
@@ -314,9 +315,8 @@ handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   handle_commit({cas, 0, Info}, State);
-handle_commit({cas, From, Info}, State) ->
+handle_commit({cas, From, {[{Key, Offset} | _], _, _} = Info}, State) ->
   MsgId = erlang:unique_integer([monotonic, positive]),
-  {[{Key, Offset} | _], _Owners, _Msg} = Info,
   reply(~"lin-kv", #{
     <<"type">>   => <<"cas">>,
     <<"key">>    => [<<"commit_offset">>, Key],
