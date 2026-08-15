@@ -5,8 +5,6 @@ Challenge #6a: Challenge #6a: Single-Node, Totally-Available Transactions
 https://www.fly.io/dist-sys/6a/
 """.
 
--export([init/1]).
-
 -define(CRASH, 13).
 -define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
@@ -29,53 +27,17 @@ https://www.fly.io/dist-sys/6a/
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
-  ServerPid = spawn_link(?MODULE, init, [server]),
-  RpcOutPid = spawn_link(?MODULE, init, [rpcout]),
+  RpcOutPid = spawn_link(fun rpc_out/0),
+  ServerPid = spawn_link(fun handle_msg/0),
   register(server, ServerPid),
   register(rpcout, RpcOutPid),
   loop(standard_io).
 
-init(rpcout) -> rpcout();
-init(server) -> server(fun handle_msg/2, #state{}).
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Handlers %%% 
+%%%%%%%%%%%%%%%%%%%%%%%
 
-loop(standard_io) ->
-  case io:get_line([]) of
-    eof -> ok;
-    {error, Reason} -> exit(Reason);
-    Line ->
-      server ! Line,
-      loop(standard_io)
-  end.
-
-rpcout() ->
-  receive
-    Msg ->
-      Reply = json:encode(Msg),
-      io:fwrite("~s~n", [Reply]),
-      rpcout()
-  end.
-
-server(Fn, State) ->
-  receive
-    Msg -> server_call(Fn, Msg, State)
-  end.
-
-server_call(Fn, Request, State) ->
-  Reply = Fn(Request, State),
-  server_reply(Fn, Reply).
-
-server_reply(Fn, {ok, State}) ->
-  server(Fn, State);
-server_reply(Fn, {reply, Reply, State}) ->
-  rpcout ! Reply,
-  server(Fn, State);
-server_reply(Fn, {noreply, State, Info}) ->
-  server_call(Fn, Info, State);
-server_reply(Fn, {reply, Reply0, State, Info}) ->
-  rpcout ! Reply0,
-  server_call(Fn, Info, State);
-server_reply(_Fn, stop) ->
-  ok.
+handle_msg() -> server(fun handle_msg/2, #state{}).
 
 handle_msg(Line, State)  when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
@@ -104,6 +66,50 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   NewState = State#state{callbacks = Callbacks},
   {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Protocol %%%
+%%%%%%%%%%%%%%%%%%%%%%%
+
+loop(standard_io) ->
+  case io:get_line([]) of
+    eof -> ok;
+    {error, Reason} -> exit(Reason);
+    Line ->
+      server ! Line,
+      loop(standard_io)
+  end.
+
+rpc_out() ->
+  receive
+    Msg ->
+      Reply = json:encode(Msg),
+      io:fwrite("~s~n", [Reply]),
+      rpc_out()
+  end.
+
+server(Fn, State) ->
+  receive
+    Msg -> server_call(Fn, Msg, State)
+  end.
+
+server_call(Fn, Request, State) ->
+  Reply = Fn(Request, State),
+  server_reply(Fn, Reply).
+
+server_reply(Fn, {ok, State}) ->
+  server(Fn, State);
+server_reply(Fn, {reply, Reply, State}) ->
+  rpcout ! Reply,
+  server(Fn, State);
+server_reply(Fn, {noreply, State, Info}) ->
+  server_call(Fn, Info, State);
+server_reply(Fn, {reply, Reply0, State, Info}) ->
+  rpcout ! Reply0,
+  server_call(Fn, Info, State);
+server_reply(_Fn, stop) ->
+  ok.
 
 
 reply(Dest, Body, #state{} = State) ->
