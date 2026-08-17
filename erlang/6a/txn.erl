@@ -28,9 +28,9 @@ https://www.fly.io/dist-sys/6a/
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
   RpcOutPid = spawn_link(fun rpc_out/0),
+  register(rpcout, RpcOutPid),
   ServerPid = spawn_link(fun handle_msg/0),
   register(server, ServerPid),
-  register(rpcout, RpcOutPid),
   loop(standard_io).
 
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -111,6 +111,9 @@ server_reply(Fn, {reply, Reply0, State, Info}) ->
 server_reply(_Fn, stop) ->
   ok.
 
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Messages %%%
+%%%%%%%%%%%%%%%%%%%%%%%
 
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
