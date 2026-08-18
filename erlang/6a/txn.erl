@@ -53,7 +53,7 @@ handle_msg({~"init", Src, _Dest, Body}, State) ->
   }, NewState);
 handle_msg({~"txn", Src, _Dest, Body}, State) ->
   #{<<"msg_id">> := MsgId, <<"txn">> := Ops} = Body,
-  Data0 = State#state.data, 
+  Data0 = State#state.data,
 
   {Txn, NewData} = lists:foldl(fun
     ([~"r", K, null], {List, Data}) ->
@@ -68,7 +68,7 @@ handle_msg({~"txn", Src, _Dest, Body}, State) ->
   reply(Src, #{
     <<"type">>        => ~"txn_ok",
     <<"in_reply_to">> => MsgId,
-    <<"txn">>         => lists:reverse(Txn) 
+    <<"txn">>         => lists:reverse(Txn)
   }, NewState);
 handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {Function, Data}} = State#state.callbacks,
