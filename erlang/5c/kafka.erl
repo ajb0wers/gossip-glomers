@@ -13,8 +13,8 @@ https://www.fly.io/dist-sys/5c/
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
 -define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
--define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
--define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
+-define(KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
+-define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
 
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
@@ -146,7 +146,7 @@ handle_send({{~"read_ok", ~"lin-kv", _, Body}, Send}, State) ->
   #{~"value" := Value} = Body,
   handle_send({cas, Value, Send}, State);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   Send = case Info of
@@ -181,7 +181,7 @@ handle_send({{~"cas_ok", ~"lin-kv", _Dest, _Body}, Info}, State) ->
     <<"msg_id">> => MsgId
   }, NewState, EventData);
 handle_send({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-       when ?RPC_PRECONDITION_FAILED(Body) ->
+       when ?PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   %% TODO: expect `in_reply_to=msg_id`.
   {{Key, _From, _OffsetTo, _N}, Msg} = Info,
@@ -263,7 +263,7 @@ handle_poll({{~"read_ok", ~"seq-kv", _Dest, Body}, PollInfo}, State) ->
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State);
 handle_poll({{~"error", ~"seq-kv", _Dest, Body},
              {[{_, _} | List], Logs, Data, Msg}}, State)
-       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?KEY_DOES_NOT_EXIST(Body) ->
   % {[{_Key, _Offset} | List], Logs, Data, Msg} = PollInfo,
   handle_poll({read_loop, {List, Logs, Data, Msg}}, State).
 
@@ -307,7 +307,7 @@ handle_commit({{~"read_ok", ~"lin-kv", _Dest, Body},
     _Else -> handle_commit({lin_read, {Logs, Owners, Msg}}, State)
   end;
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-         when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+         when ?KEY_DOES_NOT_EXIST(Body) ->
   %% handle link-kv rpc read error (20) when key doesn't exist.
   %% TODO: expect `in_reply_to=msg_id`.
   handle_commit({cas, 0, Info}, State);
@@ -327,7 +327,7 @@ handle_commit({{~"cas_ok", _Src, _Dest, _Body}, Info}, State) ->
   NewState = State#state{commits = #{Key => max(Value, Offset)}},
   handle_commit({lin_read, {Logs, Owners, Msg}}, NewState);
 handle_commit({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-         when ?RPC_PRECONDITION_FAILED(Body) ->
+         when ?PRECONDITION_FAILED(Body) ->
   %% handle lin-kv rpc cas error (22) when from value doesn't match.
   handle_commit({lin_read, Info}, State).
 
@@ -350,7 +350,7 @@ handle_list({{~"read_ok", ~"lin-kv", _Dest, Body}, Info}, State) ->
   NewInfo = {Keys, Offsets#{Key => Value}, Msg},
   handle_list({read_offsets, NewInfo}, State);
 handle_list({{~"error", ~"lin-kv", _Dest, Body}, Info}, State)
-       when ?RPC_KEY_DOES_NOT_EXIST(Body) ->
+       when ?KEY_DOES_NOT_EXIST(Body) ->
   {[Key | Keys], Offsets, Msg} = Info,
   NewInfo = {Keys, Offsets#{Key => 0}, Msg},
   handle_list({read_offsets, NewInfo}, State).

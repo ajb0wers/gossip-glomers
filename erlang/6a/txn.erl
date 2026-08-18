@@ -10,20 +10,8 @@ https://www.fly.io/dist-sys/6a/
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
 -define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
--define(RPC_KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
+-define(KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
 -define(RPC_PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
-
--type nodeid() :: binary().
--type msgid()  :: non_neg_integer().
--type key()    :: binary().
--type offset() :: non_neg_integer().
--record #state{
-  id        = null :: 'null' | nodeid(),
-  nodes     = []   :: [nodeid()],
-  callbacks = #{}  :: #{msgid() := any()},
-  offsets   = #{}  :: #{key() := offset()},
-  commits   = #{}  :: #{key() := offset()}
-}.
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
@@ -34,8 +22,18 @@ main([]) ->
   loop(standard_io).
 
 %%%%%%%%%%%%%%%%%%%%%%%
-%%% Server Handlers %%% 
+%%% Server Handlers %%%
 %%%%%%%%%%%%%%%%%%%%%%%
+-type nodeid() :: binary().
+-type msgid()  :: non_neg_integer().
+-type key()    :: binary().
+-type value() :: non_neg_integer().
+-record #state{
+  id        = null :: 'null' | nodeid(),
+  nodes     = []   :: [nodeid()],
+  callbacks = #{}  :: #{msgid() := any()},
+  data      = #{}  :: #{key() := value()}
+}.
 
 handle_msg() -> server(fun handle_msg/2, #state{}).
 
@@ -43,16 +41,35 @@ handle_msg(Line, State)  when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
 
 handle_msg({~"init", Src, _Dest, Body}, State) ->
-  #{<<"msg_id">>   := MsgId,
+  #{
+    <<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
-    <<"node_ids">> := NodeIds} = Body,
+    <<"node_ids">> := NodeIds
+  } = Body,
   NewState = State#state{id = NodeId, nodes = NodeIds},
   reply(Src, #{
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
   }, NewState);
-handle_msg({~"txn", _Src, _Dest, _Body} = Msg, State) ->
-  {ok, State};
+handle_msg({~"txn", Src, _Dest, Body}, State) ->
+  #{<<"msg_id">> := MsgId, <<"txn">> := Ops} = Body,
+  Data0 = State#state.data, 
+
+  {Txn, NewData} = lists:foldl(fun
+    ([~"r", K, null], {List, Data}) ->
+      V = maps:get(K, Data, null),
+      {[[~"r", K, V] | List], Data};
+    ([~"w", K, V], {List, Data}) ->
+      {[[~"w", K, V] | List], Data#{K => V}}
+  end, {[], Data0}, Ops),
+
+  NewState = State#state{data = NewData},
+
+  reply(Src, #{
+    <<"type">>        => ~"txn_ok",
+    <<"in_reply_to">> => MsgId,
+    <<"txn">>         => lists:reverse(Txn) 
+  }, NewState);
 handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {Function, Data}} = State#state.callbacks,
   Callbacks0 = State#state.callbacks,
@@ -66,7 +83,6 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   NewState = State#state{callbacks = Callbacks},
   {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
-
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Protocol %%%
@@ -111,10 +127,6 @@ server_reply(Fn, {reply, Reply0, State, Info}) ->
 server_reply(_Fn, stop) ->
   ok.
 
-%%%%%%%%%%%%%%%%%%%%%%%
-%%% Server Messages %%%
-%%%%%%%%%%%%%%%%%%%%%%%
-
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
     <<"dest">> => Dest,
@@ -122,12 +134,12 @@ reply(Dest, Body, #state{} = State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
-  Request = #{
-    <<"dest">> => Dest,
-    <<"src">>  => State#state.id,
-    <<"body">> => Body},
-  {noreply, State, {rpc, Request, EventData}}.
+%% reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
+%%   Request = #{
+%%     <<"dest">> => Dest,
+%%     <<"src">>  => State#state.id,
+%%     <<"body">> => Body},
+%%   {noreply, State, {rpc, Request, EventData}}.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
@@ -136,35 +148,4 @@ parse_line(Line) ->
     <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
   {Type, Src, Dest, Body}.
-
-owner_offsets(Offsets, Nodes) ->
-  maps:fold(fun (K, V, AccIn) ->
-    Owner = owner(K, Nodes),
-    Map = maps:get(Owner, AccIn, #{}),
-    AccIn#{Owner => Map#{K => V}}
-  end, _Init = #{}, Offsets).
-
--doc """
-Highest Random Weight in Elixir (2026)
-https://jola.dev/posts/highest-random-weight-in-elixir
-
-Rendezvous hashing - Wikipedia
-https://en.wikipedia.org/wiki/Rendezvous_hashing
-
-## Examples
-
-```erlang
-1> owner(<<"0">>, [<<"n0">>, <<"n1">>]).
-<<"n1">>
-2> owner(<<"2">>, [<<"n0">>, <<"n1">>]).
-<<"n0">>
-3> owner(<<"4">>, [<<"n0">>, <<"n1">>]).
-<<"n1">>
-4> owner(<<"8">>, [<<"n0">>, <<"n1">>]).
-<<"n0">>
-```
-""".
-owner(Key, Nodes) ->
-  Scores = [{erlang:phash2({Key, N}), N} || N <:- Nodes],
-  {_, Heighest} = lists:max(Scores), Heighest.
 

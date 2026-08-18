@@ -75,6 +75,13 @@ kafka-5c:
 	./maelstrom test -w kafka --bin ../erlang/5c/kafka.erl \
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
 
+# Challenge #6a: Challenge #6a: Single-Node, Totally-Available Transactions
+txn-6a:
+	@cd maelstrom; \
+	./maelstrom test -w txn-rw-register --bin ../erlang/6a/txn.erl \
+		--node-count 1 --time-limit 20 --rate 1000 --concurrency 2n \
+		--consistency-models read-uncommitted --availability total
+
 # Maelstrom CRDTs G-set
 g-set:
 	@cd maelstrom; \
