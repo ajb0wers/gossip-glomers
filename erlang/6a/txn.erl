@@ -24,6 +24,7 @@ main([]) ->
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Handlers %%%
 %%%%%%%%%%%%%%%%%%%%%%%
+
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
 -type key()    :: binary().
