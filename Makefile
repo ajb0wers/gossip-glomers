@@ -1,4 +1,4 @@
-.PHONY: all check lint serve podman
+.PHONY: all check serve podman
 
 all: check
 
