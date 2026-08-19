@@ -5,6 +5,8 @@ Challenge #6a: Challenge #6a: Single-Node, Totally-Available Transactions
 https://www.fly.io/dist-sys/6a/
 """.
 
+-export([reply/3, reply/4]).
+
 -define(CRASH, 13).
 -define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
@@ -143,12 +145,12 @@ reply(Dest, Body, #state{} = State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-%% reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
-%%   Request = #{
-%%     <<"dest">> => Dest,
-%%     <<"src">>  => State#state.id,
-%%     <<"body">> => Body},
-%%   {noreply, State, {rpc, Request, EventData}}.
+reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
+  Request = #{
+    <<"dest">> => Dest,
+    <<"src">>  => State#state.id,
+    <<"body">> => Body},
+  {noreply, State, {rpc, Request, EventData}}.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
