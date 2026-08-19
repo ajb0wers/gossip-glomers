@@ -1,4 +1,4 @@
-.PHONY: all check serve podman
+.PHONY: all check lint serve podman
 
 all: check
 
@@ -14,6 +14,8 @@ check:
 	escript -s erlang/5b/kafka.erl
 	escript -s erlang/5c/kafka.erl
 	escript -s erlang/6a/txn.erl
+
+lint: check
 	elvis rock
 
 serve:
