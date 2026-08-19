@@ -1,11 +1,9 @@
 #!/usr/bin/env -S escript -c
 -module(txn).
 -moduledoc """
-Challenge #6a: Challenge #6a: Single-Node, Totally-Available Transactions
-https://www.fly.io/dist-sys/6a/
+Challenge #6b: Totally-Available, Read Uncommitted Transactions
+https://www.fly.io/dist-sys/6b/
 """.
-
--export([reply/3, reply/4]).
 
 -define(CRASH, 13).
 -define(ABORT, 14).
@@ -17,10 +15,8 @@ https://www.fly.io/dist-sys/6a/
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
-  RpcOutPid = spawn_link(fun rpc_out/0),
-  register(rpcout, RpcOutPid),
-  ServerPid = spawn_link(fun handle_msg/0),
-  register(server, ServerPid),
+  register(rpcout, spawn_link(fun rpcout/0)),
+  register(server, spawn_link(fun server/0)),
   loop(standard_io).
 
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -38,7 +34,7 @@ main([]) ->
   data      = #{}  :: #{key() := value()}
 }.
 
-handle_msg() -> server(fun handle_msg/2, #state{}).
+server() -> server(fun handle_msg/2, #state{}).
 
 handle_msg(Line, State)  when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
@@ -98,23 +94,23 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 loop(standard_io) ->
   case io:get_line([]) of
     eof -> ok;
-    {error, Reason} -> exit(Reason);
     Line ->
       server ! Line,
       loop(standard_io)
   end.
 
-rpc_out() ->
+rpcout() ->
   receive
     Msg ->
       Reply = json:encode(Msg),
       io:fwrite("~s~n", [Reply]),
-      rpc_out()
+      rpcout()
   end.
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Protocol %%%
 %%%%%%%%%%%%%%%%%%%%%%%
+
 
 server(Fn, State) ->
   receive
