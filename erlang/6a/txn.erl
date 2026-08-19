@@ -28,7 +28,7 @@ main([]) ->
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
 -type key()    :: binary().
--type value() :: non_neg_integer().
+-type value()  :: non_neg_integer().
 -record #state{
   id        = null :: 'null' | nodeid(),
   nodes     = []   :: [nodeid()],
@@ -53,15 +53,19 @@ handle_msg({~"init", Src, _Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 handle_msg({~"txn", Src, _Dest, Body}, State) ->
-  #{<<"msg_id">> := MsgId, <<"txn">> := Ops} = Body,
+  #{
+    <<"msg_id">> := MsgId,
+    <<"txn">> := Ops
+  } = Body,
+
   Data0 = State#state.data,
 
   {Txn, NewData} = lists:foldl(fun
     ([~"r", K, null], {List, Data}) ->
       V = maps:get(K, Data, null),
       {[[~"r", K, V] | List], Data};
-    ([~"w", K, V], {List, Data}) ->
-      {[[~"w", K, V] | List], Data#{K => V}}
+    ([~"w", K, V] = W, {List, Data}) ->
+      {[W | List], Data#{K => V}}
   end, {[], Data0}, Ops),
 
   NewState = State#state{data = NewData},
@@ -85,9 +89,9 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-%%%%%%%%%%%%%%%%%%%%%%%
-%%% Server Protocol %%%
-%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%$%%%%
+%%% Server I/O %%%
+%%%%%%%%%%%%%%%%%%
 
 loop(standard_io) ->
   case io:get_line([]) of
@@ -105,6 +109,10 @@ rpc_out() ->
       io:fwrite("~s~n", [Reply]),
       rpc_out()
   end.
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Protocol %%%
+%%%%%%%%%%%%%%%%%%%%%%%
 
 server(Fn, State) ->
   receive
