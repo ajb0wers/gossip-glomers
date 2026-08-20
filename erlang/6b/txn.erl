@@ -95,17 +95,24 @@ loop(standard_io) ->
   case io:get_line([]) of
     eof -> ok;
     Line ->
-      server ! Line,
+      server ! {rpc, Line},
       loop(standard_io)
   end.
 
 rpcout() ->
   receive
-    Msg ->
+    {rpc, Msg} ->
       Reply = json:encode(Msg),
       io:fwrite("~s~n", [Reply]),
       rpcout()
   end.
+
+%% server_msg() -> server(fun handle_msg/2, #state{}).
+%% server_rpc() -> server(fun handle_rpc/2, #{}).
+%% rpc(Server, Msg) -> Server ! {rpc, Msg}.
+%% handle_rpc({rpc, Msg}, State) -> 
+%%   Reply = json:encode(Msg),
+%%   {io:fwrite("~s~n", [Reply]), State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Protocol %%%
@@ -114,7 +121,7 @@ rpcout() ->
 
 server(Fn, State) ->
   receive
-    Msg -> server_call(Fn, Msg, State)
+    {rpc, Msg} -> server_call(Fn, Msg, State)
   end.
 
 server_call(Fn, Request, State) ->
@@ -124,12 +131,12 @@ server_call(Fn, Request, State) ->
 server_reply(Fn, {ok, State}) ->
   server(Fn, State);
 server_reply(Fn, {reply, Reply, State}) ->
-  rpcout ! Reply,
+  rpcout ! {rpc, Reply},
   server(Fn, State);
 server_reply(Fn, {noreply, State, Info}) ->
   server_call(Fn, Info, State);
 server_reply(Fn, {reply, Reply0, State, Info}) ->
-  rpcout ! Reply0,
+  rpcout ! {rpc, Reply0},
   server_call(Fn, Info, State);
 server_reply(_Fn, stop) ->
   ok.
