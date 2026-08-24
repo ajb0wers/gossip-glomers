@@ -9,9 +9,12 @@ https://www.fly.io/dist-sys/6b/
 -define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
 -define(PRECONDITION_FAILED, 22).
+-define(TXN_CONFLICT, 30).
+
 -define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
 -define(KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
 -define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
+-define(TXN_CONFLICT(Body), ?RPC_ERR(?TXN_CONFLICT, Body)).
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
