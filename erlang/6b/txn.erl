@@ -5,9 +5,15 @@ Challenge #6b: Totally-Available, Read Uncommitted Transactions
 https://www.fly.io/dist-sys/6b/
 """.
 
+-define(TIMEOUT, 0).
+-define(NODE_NOT_FOUND, 1).
+-define(NOT_SUPPORTED, 10).
+-define(TEMPORARILY_UNAVAILABLE, 11).
+-define(MALFORMED_REQUEST, 12).
 -define(CRASH, 13).
 -define(ABORT, 14).
 -define(KEY_DOES_NOT_EXIST, 20).
+-define(KEY_ALREADY_EXIST, 21).
 -define(PRECONDITION_FAILED, 22).
 -define(TXN_CONFLICT, 30).
 
