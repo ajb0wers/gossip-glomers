@@ -5,6 +5,16 @@ Challenge #6b: Totally-Available, Read Uncommitted Transactions
 https://www.fly.io/dist-sys/6b/
 """.
 
+main([]) ->
+  io:setopts(standard_io, [{binary, true}]),
+  register(rpcout, spawn_link(fun rpcout/0)),
+  register(server, spawn_link(fun server/0)),
+  loop(standard_io).
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Handlers %%%
+%%%%%%%%%%%%%%%%%%%%%%%
+
 -define(TIMEOUT, 0).
 -define(NODE_NOT_FOUND, 1).
 -define(NOT_SUPPORTED, 10).
@@ -22,15 +32,8 @@ https://www.fly.io/dist-sys/6b/
 -define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
 -define(TXN_CONFLICT(Body), ?RPC_ERR(?TXN_CONFLICT, Body)).
 
-main([]) ->
-  io:setopts(standard_io, [{binary, true}]),
-  register(rpcout, spawn_link(fun rpcout/0)),
-  register(server, spawn_link(fun server/0)),
-  loop(standard_io).
 
-%%%%%%%%%%%%%%%%%%%%%%%
-%%% Server Handlers %%%
-%%%%%%%%%%%%%%%%%%%%%%%
+
 
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
@@ -96,6 +99,44 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
+handle_txn(Msg, State) ->
+  %% dest=>lin-kv, type=>read, key=>root
+  {noreply, State};
+handle_txn({{~"read_ok", _Src, _Dest, Body}, _Info}, State) ->
+  #{~"value" := Value} = Body,
+  %% dest=>lin-kv, type=>read, key=>root:uuid
+  {noreply, State};
+handle_txn({{~"error", _Src, _Dest, _Body}, _Info}, State) ->
+  %% when root KEY_DOES_NOT_EXISTS(22) apply ops to data=#{}
+  %% handle_txn({transact, Data}, State);
+  {noreply, State};
+handle_txn({{~"read_ok", _Src, _Dest, Body}, _Info}, State) ->
+  #{~"value" := Value} = Body,
+  %% handle_txn({transact, Data}, State);
+  {noreply, State};
+handle_txn({transact, _Info}, State) ->
+  %% type=>write, key=>root:uuid, value=>transact(Ops, Data)
+  {noreply, State};
+handle_txn({write_ok, _Info}, State) ->
+  %% type=>cas, root=>uuid
+  {noreply, State};
+handle_txn({cas_ok, _Info}, State) ->
+  %% type=>txn_ok, 
+  {reply, State};
+handle_txn({{~"error", _, _, _}, _Info}, State) ->
+  %% erlang:send_after(Backoff=ran:uniform(50), Msg)
+  {noreply, State};
+handle_txn(_, State) -> {noreply, State}.
+
+transact(Ops, Data0) -> 
+  {Txn, NewData} = lists:foldl(fun
+    ([~"r", K, null], {List, Data}) ->
+      V = maps:get(K, Data, null),
+      {[[~"r", K, V] | List], Data};
+    ([~"w", K, V] = W, {List, Data}) ->
+      {[W | List], Data#{K => V}}
+  end, {[], Data0}, Ops).
+
 %%%%%%%%%%%%%$%%%%
 %%% Server I/O %%%
 %%%%%%%%%%%%%%%%%%
@@ -126,7 +167,6 @@ rpcout() ->
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Protocol %%%
 %%%%%%%%%%%%%%%%%%%%%%%
-
 
 server(Fn, State) ->
   receive
