@@ -2,29 +2,6 @@
 
 all: check
 
-check:
-	escript -s erlang/1/echo.erl
-	escript -s erlang/2/uniqueids.erl
-	escript -s erlang/3/broadcast.erl
-	escript -s erlang/3e/broadcast.erl
-	escript -s erlang/4/g_set.erl
-	escript -s erlang/4/counter.erl
-	escript -s erlang/4/pn_counter.erl
-	escript -s erlang/5a/kafka.erl
-	escript -s erlang/5b/kafka.erl
-	escript -s erlang/5c/kafka.erl
-	escript -s erlang/6a/txn.erl
-
-lint: check
-	elvis rock
-
-serve:
-	@cd maelstrom; ./maelstrom serve
-
-podman:
-	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
-
 # Challenge #1: Echo
 echo:
 	@cd maelstrom; \
@@ -93,4 +70,27 @@ pn-counter:
 	@cd maelstrom; \
 	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
 		--time-limit 20 --rate 10 
+
+check:
+	escript -s erlang/1/echo.erl
+	escript -s erlang/2/uniqueids.erl
+	escript -s erlang/3/broadcast.erl
+	escript -s erlang/3e/broadcast.erl
+	escript -s erlang/4/g_set.erl
+	escript -s erlang/4/counter.erl
+	escript -s erlang/4/pn_counter.erl
+	escript -s erlang/5a/kafka.erl
+	escript -s erlang/5b/kafka.erl
+	escript -s erlang/5c/kafka.erl
+	escript -s erlang/6a/txn.erl
+
+lint: check
+	elvis rock
+
+serve:
+	@cd maelstrom; ./maelstrom serve
+
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 
