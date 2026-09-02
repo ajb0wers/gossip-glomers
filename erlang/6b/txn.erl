@@ -51,7 +51,7 @@ server() -> server(fun handle_msg/2, #state{}).
 handle_msg(Line, State)  when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
 
-handle_msg({~"init", Src, _Dest, Body}, State) ->
+handle_msg({init, Src, _Dest, Body}, State) ->
   #{
     <<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
@@ -62,29 +62,8 @@ handle_msg({~"init", Src, _Dest, Body}, State) ->
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
   }, NewState);
-handle_msg({~"txn", Src, _Dest, Body}, State) ->
-  #{
-    <<"msg_id">> := MsgId,
-    <<"txn">> := Ops
-  } = Body,
-
-  Data0 = State#state.data,
-
-  {Txn, NewData} = lists:foldl(fun
-    ([~"r", K, null], {List, Data}) ->
-      V = maps:get(K, Data, null),
-      {[[~"r", K, V] | List], Data};
-    ([~"w", K, V] = W, {List, Data}) ->
-      {[W | List], Data#{K => V}}
-  end, {[], Data0}, Ops),
-
-  NewState = State#state{data = NewData},
-
-  reply(Src, #{
-    <<"type">>        => ~"txn_ok",
-    <<"in_reply_to">> => MsgId,
-    <<"txn">>         => lists:reverse(Txn)
-  }, NewState);
+handle_msg({txn, _, _, _} = Msg, State) ->
+  handle_txn(Msg, State);
 handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   #{ReplyId := {Function, Data}} = State#state.callbacks,
   Callbacks0 = State#state.callbacks,
@@ -99,18 +78,22 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   {reply, Request, NewState};
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
-handle_txn(Msg, State) ->
-  %% dest=>lin-kv, type=>read, key=>root
-  {noreply, State};
-handle_txn({{~"read_ok", _Src, _Dest, Body}, _Info}, State) ->
+handle_txn({txn, _, _, _} = Msg, State) ->
+  %% Info :: {Root::binary(), Data::#{}, Msg} 
+  Info = {generate(), #{}, Msg},
+  reply(~"lin-kv", #{
+    ~"type" => ~"read",
+    ~"key"  => ~"root" 
+  }, State, _EventData = {handle_txn, Info});
+handle_txn({{read_ok, _Src, _Dest, Body}, _Info}, State) ->
   #{~"value" := Value} = Body,
   %% dest=>lin-kv, type=>read, key=>root:uuid
   {noreply, State};
-handle_txn({{~"error", _Src, _Dest, _Body}, _Info}, State) ->
+handle_txn({{error, _Src, _Dest, _Body}, _Info}, State) ->
   %% when root KEY_DOES_NOT_EXISTS(22) apply ops to data=#{}
   %% handle_txn({transact, Data}, State);
   {noreply, State};
-handle_txn({{~"read_ok", _Src, _Dest, Body}, _Info}, State) ->
+handle_txn({{read_ok, _Src, _Dest, Body}, _Info}, State) ->
   #{~"value" := Value} = Body,
   %% handle_txn({transact, Data}, State);
   {noreply, State};
@@ -123,7 +106,7 @@ handle_txn({write_ok, _Info}, State) ->
 handle_txn({cas_ok, _Info}, State) ->
   %% type=>txn_ok, 
   {reply, State};
-handle_txn({{~"error", _, _, _}, _Info}, State) ->
+handle_txn({{error, _, _, _}, _Info}, State) ->
   %% erlang:send_after(Backoff=ran:uniform(50), Msg)
   {noreply, State};
 handle_txn(_, State) -> {noreply, State}.
@@ -156,13 +139,6 @@ rpcout() ->
       io:fwrite("~s~n", [Reply]),
       rpcout()
   end.
-
-%% server_msg() -> server(fun handle_msg/2, #state{}).
-%% server_rpc() -> server(fun handle_rpc/2, #{}).
-%% rpc(Server, Msg) -> Server ! {rpc, Msg}.
-%% handle_rpc({rpc, Msg}, State) -> 
-%%   Reply = json:encode(Msg),
-%%   {io:fwrite("~s~n", [Reply]), State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Protocol %%%
@@ -210,7 +186,7 @@ parse_line(Line) ->
     <<"dest">> := Dest,
     <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
-  {Type, Src, Dest, Body}.
+  {binary_to_existing_atom(Type), Src, Dest, Body}.
 
 -doc """
 https://antonz.org/uuidv7/#erlang
