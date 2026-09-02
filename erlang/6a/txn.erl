@@ -43,7 +43,8 @@ handle_msg() -> server(fun handle_msg/2, #state{}).
 handle_msg(Line, State)  when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
 
-handle_msg({~"init", Src, _Dest, Body}, State) ->
+handle_msg({init, Src, _Dest, Body}, State) ->
+%% handle_msg({~"init", Src, _Dest, Body}, State) ->
   #{
     <<"msg_id">>   := MsgId,
     <<"node_id">>  := NodeId,
@@ -54,7 +55,7 @@ handle_msg({~"init", Src, _Dest, Body}, State) ->
     <<"type">> => <<"init_ok">>,
     <<"in_reply_to">> => MsgId
   }, NewState);
-handle_msg({~"txn", Src, _Dest, Body}, State) ->
+handle_msg({txn, Src, _Dest, Body}, State) ->
   #{
     <<"msg_id">> := MsgId,
     <<"txn">> := Ops
@@ -158,5 +159,5 @@ parse_line(Line) ->
     <<"dest">> := Dest,
     <<"body">> := Body} = Msg,
   #{<<"type">> := Type} = Body,
-  {Type, Src, Dest, Body}.
+  {binary_to_existing_atom(Type), Src, Dest, Body}.
 
