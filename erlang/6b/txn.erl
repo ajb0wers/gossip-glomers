@@ -167,14 +167,14 @@ server_reply(_Fn, stop) ->
 
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
-    <<"src">>  => State#state.id,
+    <<"src">>  => State#_.id,
     <<"dest">> => Dest,
     <<"body">> => Body},
   {reply, Reply, State}.
 
 reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
   Request = #{
-    <<"src">>  => State#state.id,
+    <<"src">>  => State#_.id,
     <<"dest">> => Dest,
     <<"body">> => Body},
   {noreply, State, {rpc, Request, EventData}}.
