@@ -32,9 +32,6 @@ main([]) ->
 -define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
 -define(TXN_CONFLICT(Body), ?RPC_ERR(?TXN_CONFLICT, Body)).
 
-
-
-
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
 -type key()    :: binary().
@@ -81,9 +78,11 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 handle_txn({txn, _, _, _} = Msg, State) ->
   %% Info :: {Root::binary(), Data::#{}, Msg} 
   Info = {generate(), #{}, Msg},
+  MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
-    ~"key"  => ~"root" 
+    ~"key"  => ~"root",
+    ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
 handle_txn({{read_ok, _Src, _Dest, Body}, _Info}, State) ->
   #{~"value" := Value} = Body,
@@ -168,15 +167,15 @@ server_reply(_Fn, stop) ->
 
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
-    <<"dest">> => Dest,
     <<"src">>  => State#state.id,
+    <<"dest">> => Dest,
     <<"body">> => Body},
   {reply, Reply, State}.
 
 reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
   Request = #{
-    <<"dest">> => Dest,
     <<"src">>  => State#state.id,
+    <<"dest">> => Dest,
     <<"body">> => Body},
   {noreply, State, {rpc, Request, EventData}}.
 
@@ -191,7 +190,6 @@ parse_line(Line) ->
 -doc """
 https://antonz.org/uuidv7/#erlang
 """.
--spec generate() -> binary().
 generate() ->
     <<RandA:12, RandB:62, _:6>> = crypto:strong_rand_bytes(10),
     UnixTsMs = os:system_time(millisecond), Ver = 2#0111, Var = 2#10,
