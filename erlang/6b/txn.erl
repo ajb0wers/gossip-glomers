@@ -76,29 +76,44 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
 handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_txn({txn, _, _, _} = Msg, State) ->
-  %% Info :: {Root::binary(), Data::#{}, Msg} 
-  Info = {generate(), #{}, Msg},
+  %% Info :: {Root::binary(), To::binary, Data::#{}, Msg} 
+  Info = {_Root=generate(), _To=generate(), _Data=#{}, Msg},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
     ~"key"  => ~"root",
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
-handle_txn({{read_ok, _Src, _Dest, Body}, _Info}, State) ->
-  #{~"value" := Value} = Body,
-  %% dest=>lin-kv, type=>read, key=>root:uuid
-  {noreply, State};
+handle_txn({{read_ok, ~"lin-kv", _Dest, Body}, {_, To, Data, Msg}}, State)
+      when map_get(~"key", Body) == ~"root" ->
+  #{~"value" := Root} = Body,
+  Info = {Root, To, Data, Msg},
+  MsgId = erlang:unique_integer([monotonic, positive]),
+  reply(~"lin-kv", #{
+    ~"type" => ~"read",
+    ~"key"  => ["root", Root],
+    ~"msg_id" => MsgId
+  }, State, _EventData = {handle_txn, Info});
 handle_txn({{error, _Src, _Dest, _Body}, _Info}, State) ->
   %% when root KEY_DOES_NOT_EXISTS(22) apply ops to data=#{}
   %% handle_txn({transact, Data}, State);
   {noreply, State};
-handle_txn({{read_ok, _Src, _Dest, Body}, _Info}, State) ->
-  #{~"value" := Value} = Body,
-  %% handle_txn({transact, Data}, State);
-  {noreply, State};
-handle_txn({transact, _Info}, State) ->
+handle_txn({{read_ok, _Src, _Dest, Body}, {Root, To, _, Msg}}, State) ->
+  #{~"value" := Data} = Body,
+  Info = {Root, To, Data, Msg},
+  handle_txn({transact, Info}, State);
+handle_txn({transact, {Root, To, Data0, _, Msg}}, State) ->
   %% type=>write, key=>root:uuid, value=>transact(Ops, Data)
-  {noreply, State};
+  #{~"body" := #{~"txn" := Ops}} = Msg,
+  {Txn, Data} = transact(Ops, Data0),
+  Info = {Root, To, Data, Txn, Msg},
+  MsgId = erlang:unique_integer([monotonic, positive]),
+  reply(~"lin-kv", #{
+    ~"type" => ~"write",
+    ~"key"  => [~"root", To],
+    ~"value" => Data,
+    ~"msg_id" => MsgId
+  }, State, _EventData = {handle_txn, Info});
 handle_txn({write_ok, _Info}, State) ->
   %% type=>cas, root=>uuid
   {noreply, State};
@@ -111,7 +126,7 @@ handle_txn({{error, _, _, _}, _Info}, State) ->
 handle_txn(_, State) -> {noreply, State}.
 
 transact(Ops, Data0) -> 
-  {Txn, NewData} = lists:foldl(fun
+  lists:foldl(fun
     ([~"r", K, null], {List, Data}) ->
       V = maps:get(K, Data, null),
       {[[~"r", K, V] | List], Data};
@@ -172,7 +187,7 @@ reply(Dest, Body, #state{} = State) ->
     <<"body">> => Body},
   {reply, Reply, State}.
 
-reply(Dest, Body, #state{} = State, {_Fun, _Info} = EventData) ->
+reply(Dest, Body, State, {_Fun, _Info} = EventData) ->
   Request = #{
     <<"src">>  => State#_.id,
     <<"dest">> => Dest,
@@ -187,10 +202,10 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {binary_to_existing_atom(Type), Src, Dest, Body}.
 
--doc """
-https://antonz.org/uuidv7/#erlang
-""".
 generate() ->
-    <<RandA:12, RandB:62, _:6>> = crypto:strong_rand_bytes(10),
-    UnixTsMs = os:system_time(millisecond), Ver = 2#0111, Var = 2#10,
+  generate(os:system_time(millisecond), crypto:strong_rand_bytes(10)).
+
+generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
+    Ver = 2#0111, Var = 2#10,
     <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
+
