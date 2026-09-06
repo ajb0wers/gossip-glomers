@@ -75,7 +75,7 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
   Callbacks = Callbacks0#{MsgId => Info},
   NewState = State#state{callbacks = Callbacks},
   {reply, Request, NewState};
-handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
+handle_msg({_Tag, _Src, _Dest, _Body}, State) -> {ok, State}.
 
 handle_txn({txn, _, _, _} = Msg, State) ->
   %% Info :: {Root::binary(), To::binary, Data::#{}, Msg} 
@@ -135,10 +135,10 @@ handle_txn({{cas_ok, _, _, _}, {_, _, _, Txn, Msg}}, State) ->
   }, State);
 handle_txn({{error, _, _, Body}, {_, _, _, _, Msg}}, State)
       when ?PRECONDITION_FAILED(Body) ->
-  Backoff = ran:uniform(50),
-  {ok, _} = erlang:send_after(Backoff, Msg),
+  Backoff = rand:uniform(50),
+  {ok, _TRef} = timer:send_after(Backoff, {rpc, Msg}),
   {ok, State};
-handle_txn(_, State) ->
+handle_txn(_Msg, State) ->
   {ok, State}.
 
 transact(Ops, Data0) -> 
