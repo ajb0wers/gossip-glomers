@@ -5,6 +5,8 @@ Challenge #6b: Totally-Available, Read Uncommitted Transactions
 https://www.fly.io/dist-sys/6b/
 """.
 
+-export([handle_txn/2]).
+
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
   register(rpcout, spawn_link(fun rpcout/0)),
@@ -77,21 +79,20 @@ handle_msg({_Tag, _Src, _Dest}, State) -> {ok, State}.
 
 handle_txn({txn, _, _, _} = Msg, State) ->
   %% Info :: {Root::binary(), To::binary, Data::#{}, Msg} 
-  Info = {_Root=generate(), _To=generate(), _Data=#{}, Msg},
+  Info = {_Root=~"", _To=~"", _Data=#{}, Msg},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
     ~"key"  => ~"root",
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
-handle_txn({{read_ok, ~"lin-kv", _Dest, Body}, {_, To, Data, Msg}}, State)
-      when map_get(~"key", Body) == ~"root" ->
+handle_txn({{read_ok, ~"lin-kv", _Dest, Body}, {~"", To, Data, Msg}}, State) ->
   #{~"value" := Root} = Body,
   Info = {Root, To, Data, Msg},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
-    ~"key"  => ["root", Root],
+    ~"key"  => [~"root", Root],
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
 handle_txn({{error, _Src, _Dest, _Body}, _Info}, State) ->
@@ -102,10 +103,11 @@ handle_txn({{read_ok, _Src, _Dest, Body}, {Root, To, _, Msg}}, State) ->
   #{~"value" := Data} = Body,
   Info = {Root, To, Data, Msg},
   handle_txn({transact, Info}, State);
-handle_txn({transact, {Root, To, Data0, _, Msg}}, State) ->
+handle_txn({transact, {Root, _, Data0, Msg}}, State) ->
   %% type=>write, key=>root:uuid, value=>transact(Ops, Data)
-  #{~"body" := #{~"txn" := Ops}} = Msg,
+  {txn, _, _, #{~"txn" := Ops}} = Msg,
   {Txn, Data} = transact(Ops, Data0),
+  To = uuid(),
   Info = {Root, To, Data, Txn, Msg},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
@@ -114,12 +116,24 @@ handle_txn({transact, {Root, To, Data0, _, Msg}}, State) ->
     ~"value" => Data,
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
-handle_txn({write_ok, _Info}, State) ->
+handle_txn({{write_ok, _, _, _}, {From, To, _, _, _} = Info}, State) ->
   %% type=>cas, root=>uuid
-  {noreply, State};
-handle_txn({cas_ok, _Info}, State) ->
-  %% type=>txn_ok, 
-  {reply, State};
+  MsgId = erlang:unique_integer([monotonic, positive]),
+  reply(~"lin-kv", #{
+    ~"type"   => ~"cas",
+    ~"key"    => ~"root",
+    ~"from"   => From,
+    ~"to"     => To,
+    ~"msg_id" => MsgId,
+    ~"create_if_not_exists" => true
+  }, State, _EventData = {handle_txn, Info});
+handle_txn({{cas_ok, _, _, _}, {_, _, _, Txn, Msg}}, State) ->
+  {txn, Src, _, #{<<"msg_id">> := MsgId}} = Msg,
+  reply(Src, #{
+    <<"type">>        => ~"txn_ok",
+    <<"in_reply_to">> => MsgId,
+    <<"txn">>         => lists:reverse(Txn)
+  }, State);
 handle_txn({{error, _, _, _}, _Info}, State) ->
   %% erlang:send_after(Backoff=ran:uniform(50), Msg)
   {noreply, State};
@@ -202,8 +216,11 @@ parse_line(Line) ->
   #{<<"type">> := Type} = Body,
   {binary_to_existing_atom(Type), Src, Dest, Body}.
 
-generate() ->
-  generate(os:system_time(millisecond), crypto:strong_rand_bytes(10)).
+uuid() ->
+  TsMs = os:system_time(millisecond),
+  Rand = crypto:strong_rand_bytes(10),
+  Uuid = generate(TsMs, Rand),
+  binary:encode_hex(Uuid).
 
 generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
     Ver = 2#0111, Var = 2#10,
