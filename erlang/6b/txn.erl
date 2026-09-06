@@ -78,8 +78,8 @@ handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
 handle_msg({_Tag, _Src, _Dest, _Body}, State) -> {ok, State}.
 
 handle_txn({txn, _, _, _} = Msg, State) ->
-  %% Info :: {Root::binary(), To::binary, Data::#{}, Msg} 
-  Info = {_Root=~"", _To=~"", _Data=#{}, Msg},
+  %% Info :: {Root::binary(), To::binary, Data::#{}, Msg}
+  Info = {_Root = ~"", _To = ~"", _Data = #{}, Msg},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
@@ -141,7 +141,7 @@ handle_txn({{error, _, _, Body}, {_, _, _, _, Msg}}, State)
 handle_txn(_Msg, State) ->
   {ok, State}.
 
-transact(Ops, Data0) -> 
+transact(Ops, Data0) ->
   lists:foldl(fun
     ([~"r", K, null], {List, Data}) ->
       V = maps:get(K, Data, null),
