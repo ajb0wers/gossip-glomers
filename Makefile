@@ -52,13 +52,14 @@ kafka-5c:
 	./maelstrom test -w kafka --bin ../erlang/5c/kafka.erl \
 		--node-count 2 --concurrency 2n --time-limit 20 --rate 1000
 
-# Challenge #6a: Challenge #6a: Single-Node, Totally-Available Transactions
+# Challenge #6a: Single-Node, Totally-Available Transactions
 txn-6a:
 	@cd maelstrom; \
 	./maelstrom test -w txn-rw-register --bin ../erlang/6a/txn.erl \
 		--node-count 1 --time-limit 20 --rate 1000 --concurrency 2n \
 		--consistency-models read-uncommitted --availability total
 
+# Challenge #6b: Totally-Available, Read Uncommited  Transactions
 txn-6b:
 	@cd maelstrom; \
 	./maelstrom test -w txn-rw-register --bin ../erlang/6b/txn.erl \
@@ -66,6 +67,7 @@ txn-6b:
 	--consistency-models read-uncommitted \
 	--availability total --nemesis partition
 
+# Challenge #6c: Totally-Available, Read Commited  Transactions
 txn-6c:
 	@cd maelstrom; \
 	./maelstrom test -w txn-rw-register --bin ../erlang/6b/txn.erl \
