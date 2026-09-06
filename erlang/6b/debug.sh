@@ -19,6 +19,7 @@ txn() {
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":6,"type":"write_ok"}}'
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":7,"type":"error","code":22}}'
 
+  sleep 10s
   send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":8,"type":"read_ok","value":"01A073DDB4307810A6696E4F1A615626"}}'
   # send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":9,"type":"read_ok","value":{"1":3}}}'
   # send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":10,"type":"write_ok"}}'
