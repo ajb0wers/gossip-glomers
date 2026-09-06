@@ -95,10 +95,10 @@ handle_txn({{read_ok, ~"lin-kv", _Dest, Body}, {~"", To, Data, Msg}}, State) ->
     ~"key"  => [~"root", Root],
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
-handle_txn({{error, _Src, _Dest, _Body}, _Info}, State) ->
-  %% when root KEY_DOES_NOT_EXISTS(22) apply ops to data=#{}
-  %% handle_txn({transact, Data}, State);
-  {noreply, State};
+handle_txn({{error, _Src, _Dest, Body}, {~"", _, _, _} = Info}, State)
+      when ?KEY_DOES_NOT_EXIST(Body) ->
+  %% when root KEY_DOES_NOT_EXISTS(22) default data=#{}
+  handle_txn({transact, Info}, State);
 handle_txn({{read_ok, _Src, _Dest, Body}, {Root, To, _, Msg}}, State) ->
   #{~"value" := Data} = Body,
   Info = {Root, To, Data, Msg},
@@ -117,7 +117,6 @@ handle_txn({transact, {Root, _, Data0, Msg}}, State) ->
     ~"msg_id" => MsgId
   }, State, _EventData = {handle_txn, Info});
 handle_txn({{write_ok, _, _, _}, {From, To, _, _, _} = Info}, State) ->
-  %% type=>cas, root=>uuid
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type"   => ~"cas",
@@ -134,10 +133,13 @@ handle_txn({{cas_ok, _, _, _}, {_, _, _, Txn, Msg}}, State) ->
     <<"in_reply_to">> => MsgId,
     <<"txn">>         => lists:reverse(Txn)
   }, State);
-handle_txn({{error, _, _, _}, _Info}, State) ->
-  %% erlang:send_after(Backoff=ran:uniform(50), Msg)
-  {noreply, State};
-handle_txn(_, State) -> {noreply, State}.
+handle_txn({{error, _, _, Body}, {_, _, _, _, Msg}}, State)
+      when ?PRECONDITION_FAILED(Body) ->
+  Backoff = ran:uniform(50),
+  {ok, _} = erlang:send_after(Backoff, Msg),
+  {ok, State};
+handle_txn(_, State) ->
+  {ok, State}.
 
 transact(Ops, Data0) -> 
   lists:foldl(fun

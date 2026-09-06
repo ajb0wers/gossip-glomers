@@ -7,13 +7,15 @@ txn() {
   # {"body":{"in_reply_to":1,"type":"init_ok"},"dest":"c1","src":"n1"}
 
   send '{"src":"c1","dest":"n1","body":{"type":"txn","msg_id":2,"txn":[["w",1,3]]}}'
-  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":1,"type":"read_ok","value":"01A073DDB4307810A6696E4F1A615626"}}'
-  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":2,"type":"read_ok","value":{}}}'
-  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":3,"type":"write_ok"}}'
-  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":4,"type":"cas_ok"}}'
-  # {"body":{"in_reply_to":2,"txn":[["w",1,3]],"type":"txn_ok"},"dest":"c1","src":"n1"}
+  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":1,"type":"error","code":20}}'
+  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":2,"type":"write_ok"}}'
+  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":3,"type":"cas_ok"}}'
 
-  # send '{"src":"c1","dest":"n1","body":{"type":"txn","msg_id":3,"txn":[["r",1,null],["w",1,6],["w",2,9]]}}'
+  ## send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":2,"type":"read_ok","value":{}}}'
+
+  send '{"src":"c1","dest":"n1","body":{"type":"txn","msg_id":3,"txn":[["r",1,null],["w",1,6],["w",2,9]]}}'
+  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":4,"type":"read_ok","value":"01A073DDB4307810A6696E4F1A615626"}}'
+  send '{"src":"lin-kv","dest":"n1","body":{"in_reply_to":4,"type":"read_ok","value":"[["1", 3]]"}}'
   # {"body":{"in_reply_to":3,"txn":[["r",1,3],["w",1,6],["w",2,9]],"type":"txn_ok"},"dest":"c1","src":"n1"}
 
   cat -
