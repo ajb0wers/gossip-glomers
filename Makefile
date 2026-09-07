@@ -1,4 +1,4 @@
-.PHONY: all check lint serve podman tool-versions
+.PHONY: all check lint serve maelstrom podman
 
 all: check
 
