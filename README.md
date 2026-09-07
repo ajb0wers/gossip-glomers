@@ -21,10 +21,4 @@ make kafka-5c
 
 # Challenge #6c: Totally-Available, Read Commited  Transactions
 make txn-6c
-
-# Maelstrom CRDTs G-set
-make g-set
-
-# Maelstrom CRDTs PN-Counters
-make pn-counter
 ```
