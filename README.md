@@ -1,9 +1,6 @@
 See `Makefile`. 
 
 ```Bash
-# Build & run containerized Erlang & Maelstrom
-make podman
-
 # Challenge #1: Echo
 make echo-1
 
