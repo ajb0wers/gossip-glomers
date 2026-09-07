@@ -2,6 +2,11 @@
 
 all: check
 
+# Build & run containerized Erlang & maelstrom.
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
+
 # Challenge #1: Echo
 echo:
 	@cd maelstrom; \
@@ -100,13 +105,9 @@ check:
 	escript -s erlang/5c/kafka.erl
 	escript -s erlang/6a/txn.erl
 
-lint: check
+lint:
 	elvis rock
 
 serve:
 	@cd maelstrom; ./maelstrom serve
-
-podman:
-	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 
