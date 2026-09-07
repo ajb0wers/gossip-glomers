@@ -8,7 +8,7 @@
 See `Makefile`. 
 
 ```Bash
-# Build & run containerized erlang & maelstrom
+# Build & run containerized Erlang & Maelstrom
 make podman
 
 # Challenge #3e: Efficient Broadcast, Part II
