@@ -1,4 +1,4 @@
-.PHONY: all check lint serve maelstrom podman
+.PHONY: all check lint podman maelstrom serve
 
 all: check
 
