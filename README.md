@@ -5,7 +5,7 @@ See `Makefile`.
 make podman
 
 # Challenge #1: Echo
-make echo
+make echo-1
 
 # Challenge #2: Unique ID Generation
 make unique-ids
@@ -19,6 +19,6 @@ make g-counter
 # Challenge #5c: Efficient Kafka-Style Log
 make kafka-5c
 
-# Challenge #6c: Totally-Available, Read Commited  Transactions
+# Challenge #6c: Totally-Available, Read Commited Transactions
 make txn-6c
 ```
