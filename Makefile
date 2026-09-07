@@ -8,7 +8,7 @@ podman:
 	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
 
 # Challenge #1: Echo
-echo:
+echo-1:
 	@cd maelstrom; \
 	./maelstrom test -w echo --bin ../erlang/1/echo.erl \
 		--node-count 5 --time-limit 10
@@ -72,7 +72,7 @@ txn-6b:
 	--consistency-models read-uncommitted \
 	--availability total --nemesis partition
 
-# Challenge #6c: Totally-Available, Read Commited  Transactions
+# Challenge #6c: Totally-Available, Read Commited Transactions
 txn-6c:
 	@cd maelstrom; \
 	./maelstrom test -w txn-rw-register --bin ../erlang/6b/txn.erl \
