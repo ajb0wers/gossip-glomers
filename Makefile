@@ -1,4 +1,4 @@
-.PHONY: all check lint serve podman
+.PHONY: all check lint serve podman tool-versions
 
 all: check
 
@@ -92,6 +92,15 @@ pn-counter:
 	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
 		--time-limit 20 --rate 10 
 
+# Install local Maelstrom
+maelstrom:
+	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
+	| tar -xj
+
+# Maelstrom results (http://localhost:8080).
+serve:
+	@cd maelstrom; ./maelstrom serve
+
 check:
 	escript -s erlang/1/echo.erl
 	escript -s erlang/2/uniqueids.erl
@@ -104,10 +113,9 @@ check:
 	escript -s erlang/5b/kafka.erl
 	escript -s erlang/5c/kafka.erl
 	escript -s erlang/6a/txn.erl
+	escript -s erlang/6b/txn.erl
 
 lint:
 	elvis rock
 
-serve:
-	@cd maelstrom; ./maelstrom serve
 
