@@ -8,17 +8,11 @@
 See `Makefile`. 
 
 ```Bash
-# Challenge #1: Echo
-make echo
-
-# Challenge #2: Unique ID Generation
-make unique-ids
+# Build & run containerized erlang & maelstrom
+make podman
 
 # Challenge #3e: Efficient Broadcast, Part II
 make broadcast-3e
-
-# Build & run containerized erlang & maelstrom
-make podman
 ```
 
 ## See also
