@@ -2,7 +2,7 @@
 
 all: check
 
-# Build & run containerized Erlang & maelstrom.
+# Build & run containerized Erlang & Maelstrom.
 podman:
 	podman build -t ajb0wers/gossip-glomers .
 	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
