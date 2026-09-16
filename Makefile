@@ -3,7 +3,7 @@
 all: check
 
 # Run target demo local (`maelstrom`) or containerized (`podman`) i.e.:
-# make [maelstrom|podman]
+# make maelstrom|podman
 # make demo serve
 demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
@@ -95,7 +95,7 @@ pn-counter:
 # Build & run containerized Erlang & Maelstrom.
 podman:
 	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
+	podman run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
 
 # Install local Maelstrom
 maelstrom:
