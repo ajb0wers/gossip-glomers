@@ -1,0 +1,16 @@
+-define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
+-define(TIMEOUT, 0).
+-define(NODE_NOT_FOUND, 1).
+-define(NOT_SUPPORTED, 10).
+-define(TEMPORARILY_UNAVAILABLE, 11).
+-define(MALFORMED_REQUEST, 12).
+-define(CRASH, 13).
+-define(ABORT, 14).
+-define(KEY_DOES_NOT_EXIST, 20).
+-define(KEY_ALREADY_EXIST, 21).
+-define(PRECONDITION_FAILED, 22).
+-define(TXN_CONFLICT, 30).
+-define(KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
+-define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
+-define(TXN_CONFLICT(Body), ?RPC_ERR(?TXN_CONFLICT, Body)).
+

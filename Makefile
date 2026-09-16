@@ -75,7 +75,7 @@ txn-6b:
 # Challenge #6c: Totally-Available, Read Commited Transactions
 txn-6c:
 	@cd maelstrom; \
-	./maelstrom test -w txn-rw-register --bin ../erlang/6b/txn.erl \
+	./maelstrom test -w txn-rw-register --bin ../erlang/6c/txn.erl \
 	--node-count 2 --concurrency 2n --time-limit 20 --rate 1000 \
 	--consistency-models read-committed \
 	--availability total --nemesis partition
