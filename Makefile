@@ -122,4 +122,5 @@ check:
 lint:
 	elvis rock
 
-
+clean:
+	find . -name 'erl_crash.dump' -delete
