@@ -1,11 +1,8 @@
-.PHONY: all check lint podman maelstrom serve
+.PHONY: all check lint demo podman maelstrom serve
 
 all: check
 
-# Build & run containerized Erlang & Maelstrom.
-podman:
-	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
+demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
 # Challenge #1: Echo
 echo-1:
@@ -92,8 +89,14 @@ pn-counter:
 	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
 		--time-limit 20 --rate 10 
 
+# Build & run containerized Erlang & Maelstrom.
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 -w /app/ ajb0wers/gossip-glomers
+
 # Install local Maelstrom
 maelstrom:
+	[ -d maelstrom ] || \
 	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 	| tar -xj
 
