@@ -1,4 +1,4 @@
-.PHONY: all check lint demo podman maelstrom serve
+.PHONY: all check lint demo podman maelstrom serve clean
 
 all: check
 
