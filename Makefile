@@ -2,12 +2,9 @@
 
 all: check
 
-# Run demo local (`malestrom`) or containerized (`podman`) e.g.:
-#
-# ```
-# make podman
+# Run target demo local (`maelstrom`) or containerized (`podman`) i.e.:
+# make maelstrom|podman
 # make demo serve
-# ```
 demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
 # Challenge #1: Echo
