@@ -1,9 +1,9 @@
-.PHONY: all check lint demo docker podman maelstrom serve clean
+.PHONY: all check lint demo docker podman install serve clean
 
 all: check
 
-# Run target demo local (`maelstrom`) or containerized i.e.:
-# make maelstrom|docker|podman
+# Run demo local (`install`) or containerized i.e.:
+# make install|docker|podman
 # make demo serve
 demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
@@ -98,8 +98,8 @@ docker podman:
 	$@ run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
 
 # Install local Maelstrom
-maelstrom:
-	[ -d maelstrom ] || \
+install:
+	@[ -d maelstrom ] || \
 	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 	| tar -xj
 
