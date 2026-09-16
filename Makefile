@@ -100,7 +100,7 @@ maelstrom:
 	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 	| tar -xj
 
-# Maelstrom results (http://localhost:8080).
+# Maelstrom results (http://0.0.0.0:8080).
 serve:
 	@cd maelstrom; ./maelstrom serve
 
