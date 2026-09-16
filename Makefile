@@ -114,6 +114,7 @@ check:
 	escript -s erlang/5c/kafka.erl
 	escript -s erlang/6a/txn.erl
 	escript -s erlang/6b/txn.erl
+	escript -s erlang/6c/txn.erl
 
 lint:
 	elvis rock
