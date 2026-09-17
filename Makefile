@@ -2,9 +2,10 @@
 
 all: check
 
-# Run demo local (`install`) or containerized i.e.:
+# Run demo locally (`install`) or containerized i.e.:
 # make install|docker|podman
-# make demo serve
+# make demo
+# make serve
 demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
 # Challenge #1: Echo
