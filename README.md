@@ -16,6 +16,6 @@ make g-counter
 # Challenge #5c: Efficient Kafka-Style Log
 make kafka-5c
 
-# Challenge #6c: Totally-Available, Read Commited Transactions
+# Challenge #6c: Totally-Available, Read Committed Transactions
 make txn-6c
 ```
