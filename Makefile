@@ -95,12 +95,12 @@ pn-counter:
 
 # Build & run containerized Erlang & Maelstrom.
 docker podman:
-	$@ build -t ajb0wers/gossip-glomers .
-	$@ run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
+	"$@" build -t ajb0wers/gossip-glomers .
+	"$@" run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
 
 # Install local Maelstrom
 install:
-	@[ -d maelstrom ] || \
+	@ [ -d maelstrom ] || \
 	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 	| tar -xj
 
