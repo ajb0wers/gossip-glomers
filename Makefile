@@ -100,7 +100,7 @@ docker podman:
 
 # Install local Maelstrom
 install:
-	@ [ -d maelstrom ] || \
+	@command test -d maelstrom || \
 	curl -SL https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
 	| tar -xj
 
