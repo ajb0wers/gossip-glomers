@@ -30,7 +30,7 @@ main([]) ->
 
 server() -> server(fun handle_msg/2, #state{}).
 
-handle_msg(Line, State)  when is_binary(Line) ->
+handle_msg(Line, State) when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
 
 handle_msg({init, Src, _Dest, Body}, State) ->
@@ -87,7 +87,6 @@ handle_txn({{read_ok, _Src, _Dest, Body}, {Root, To, _, Msg}}, State) ->
   Info = {Root, To, Data, Msg},
   handle_txn({transact, Info}, State);
 handle_txn({transact, {Root, _, Data0, Msg}}, State) ->
-  %% type=>write, key=>root:uuid, value=>transact(Ops, Data)
   {txn, _, _, #{~"txn" := Ops}} = Msg,
   {Txn, Data} = transact(Ops, Data0),
   To = uuid(),
