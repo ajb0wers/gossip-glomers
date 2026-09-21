@@ -4,8 +4,8 @@
 Challenge #6b: Totally-Available, Read Uncommitted Transactions
 https://www.fly.io/dist-sys/6b/
 """.
-
 -export([handle_txn/2]).
+-include("includes.hrl").
 
 main([]) ->
   io:setopts(standard_io, [{binary, true}]),
@@ -16,23 +16,6 @@ main([]) ->
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% Server Handlers %%%
 %%%%%%%%%%%%%%%%%%%%%%%
-
--define(TIMEOUT, 0).
--define(NODE_NOT_FOUND, 1).
--define(NOT_SUPPORTED, 10).
--define(TEMPORARILY_UNAVAILABLE, 11).
--define(MALFORMED_REQUEST, 12).
--define(CRASH, 13).
--define(ABORT, 14).
--define(KEY_DOES_NOT_EXIST, 20).
--define(KEY_ALREADY_EXIST, 21).
--define(PRECONDITION_FAILED, 22).
--define(TXN_CONFLICT, 30).
-
--define(RPC_ERR(Code, Body), map_get(~"code", Body) == Code).
--define(KEY_DOES_NOT_EXIST(Body), ?RPC_ERR(?KEY_DOES_NOT_EXIST, Body)).
--define(PRECONDITION_FAILED(Body), ?RPC_ERR(?PRECONDITION_FAILED, Body)).
--define(TXN_CONFLICT(Body), ?RPC_ERR(?TXN_CONFLICT, Body)).
 
 -type nodeid() :: binary().
 -type msgid()  :: non_neg_integer().
