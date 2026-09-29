@@ -4,6 +4,10 @@
 Challenge #6c: Totally-Available, Read Committed Transactions
 https://www.fly.io/dist-sys/6c/
 """.
+-export([
+  server1/2, server_cast/3, server_call/4,
+  server_continue/3, txn_reply/3
+]).
 -export([handle_txn/2]).
 -include("includes.hrl").
 
@@ -210,3 +214,43 @@ generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
     Ver = 2#0111, Var = 2#10,
     <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
 
+%%% server1
+server1(Fn, State) ->
+  receive
+    {cast, Msg} -> server_cast(Fn, Msg, State);
+    {call, From, Msg} -> server_call(Fn, From, Msg, State)
+end.
+
+server_cast(Fn, Request, State0) ->
+  case Fn(Request, State0) of 
+    {noreply, State} ->
+      server1(Fn, State);
+    {noreply, State, Info} ->
+      server_continue(Fn, Info, State);
+    stop ->
+      ok
+  end.
+
+server_call(Fn, From, Request, State0) ->
+  case Fn(Request, State0) of
+    {reply, Reply, State} ->
+      From ! Reply,
+      server1(Fn, State);
+    {reply, Reply0, State, Info} ->
+      From !  Reply0,
+      server_continue(Fn, Info, State);
+    {noreply, State, Info} ->
+      server_continue(Fn, Info, State);
+    stop ->
+      ok
+  end.
+
+server_continue(Fn, Request, State) ->
+  server_cast(Fn, Request, State).
+
+txn_reply(Dest, Body, State) ->
+  Request = #{
+    <<"src">>  => State#_.id,
+    <<"dest">> => Dest,
+    <<"body">> => Body},
+  {reply, {rpc, Request}, State}.
