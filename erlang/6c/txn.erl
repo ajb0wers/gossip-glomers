@@ -222,7 +222,7 @@ server1(Fn, State) ->
 end.
 
 server_cast(Fn, Request, State0) ->
-  case Fn(Request, State0) of 
+  case Fn(Request, State0) of
     {noreply, State} ->
       server1(Fn, State);
     {noreply, State, Info} ->
