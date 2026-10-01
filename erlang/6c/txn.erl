@@ -217,9 +217,11 @@ generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
 %%% server1
 server1(Fn, State) ->
   receive
-    {cast, Msg} -> server_cast(Fn, Msg, State);
-    {call, From, Msg} -> server_call(Fn, From, Msg, State)
-end.
+    {cast, Msg} ->
+      server_cast(Fn, Msg, State);
+    {call, From, Msg} ->
+      server_call(Fn, From, Msg, State)
+  end.
 
 server_cast(Fn, Request, State0) ->
   case Fn(Request, State0) of
