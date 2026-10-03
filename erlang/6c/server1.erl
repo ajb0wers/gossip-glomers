@@ -4,6 +4,10 @@
 Challenge #6c: Totally-Available, Read Committed Transactions
 https://www.fly.io/dist-sys/6c/
 """.
+-export([
+  server1/2, server_cast/3, server_call/4,
+  server_continue/3, txn_reply/3
+]).
 -export([handle_txn/2]).
 -include("includes.hrl").
 
@@ -28,7 +32,7 @@ main([]) ->
   data      = #{}  :: #{key() := value()}
 }.
 
-server() -> server(fun handle_msg/2, #state{}).
+server() -> server1(fun handle_msg/2, #state{}).
 
 handle_msg(Line, State) when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
@@ -156,27 +160,27 @@ rpcout() ->
 %%% Server Protocol %%%
 %%%%%%%%%%%%%%%%%%%%%%%
 
-server(Fn, State) ->
-  receive
-    {rpc, Msg} -> server_call(Fn, Msg, State)
-  end.
-
-server_call(Fn, Request, State) ->
-  Reply = Fn(Request, State),
-  server_reply(Fn, Reply).
-
-server_reply(Fn, {ok, State}) ->
-  server(Fn, State);
-server_reply(Fn, {reply, Reply, State}) ->
-  rpcout ! {rpc, Reply},
-  server(Fn, State);
-server_reply(Fn, {noreply, State, Info}) ->
-  server_call(Fn, Info, State);
-server_reply(Fn, {reply, Reply0, State, Info}) ->
-  rpcout ! {rpc, Reply0},
-  server_call(Fn, Info, State);
-server_reply(_Fn, stop) ->
-  ok.
+%% server(Fn, State) ->
+%%   receive
+%%     {rpc, Msg} -> server_call(Fn, Msg, State)
+%%   end.
+%% 
+%% server_call(Fn, Request, State) ->
+%%   Reply = Fn(Request, State),
+%%   server_reply(Fn, Reply).
+%% 
+%% server_reply(Fn, {ok, State}) ->
+%%   server(Fn, State);
+%% server_reply(Fn, {reply, Reply, State}) ->
+%%   rpcout ! {rpc, Reply},
+%%   server(Fn, State);
+%% server_reply(Fn, {noreply, State, Info}) ->
+%%   server_call(Fn, Info, State);
+%% server_reply(Fn, {reply, Reply0, State, Info}) ->
+%%   rpcout ! {rpc, Reply0},
+%%   server_call(Fn, Info, State);
+%% server_reply(_Fn, stop) ->
+%%   ok.
 
 reply(Dest, Body, #state{} = State) ->
   Reply = #{
@@ -209,3 +213,53 @@ uuid() ->
 generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
     Ver = 2#0111, Var = 2#10,
     <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
+
+%%% server1
+call(ServerRef, Request) -> 
+  ServerRef ! {call, self(), Request}, 
+  receive Reply -> Reply end.
+
+cast(ServerRef, Request) -> 
+  ServerRef ! {cast, Request}, ok.
+
+server1(Fn, State) ->
+  receive
+    {cast, Msg} ->
+      server_cast(Fn, Msg, State);
+    {call, From, Msg} ->
+      server_call(Fn, From, Msg, State)
+  end.
+
+server_cast(Fn, Request, State0) ->
+  case Fn(Request, State0) of
+    {noreply, State} ->
+      server1(Fn, State);
+    {noreply, State, Info} ->
+      server_continue(Fn, Info, State);
+    stop ->
+      ok
+  end.
+
+server_call(Fn, From, Request, State0) ->
+  case Fn(Request, State0) of
+    {reply, Reply, State} ->
+      From ! Reply,
+      server1(Fn, State);
+    {reply, Reply0, State, Info} ->
+      From !  Reply0,
+      server_continue(Fn, Info, State);
+    {noreply, State, Info} ->
+      server_continue(Fn, Info, State);
+    stop ->
+      ok
+  end.
+
+server_continue(Fn, Request, State) ->
+  server_cast(Fn, Request, State).
+
+txn_reply(Dest, Body, State) ->
+  Request = #{
+    <<"src">>  => State#_.id,
+    <<"dest">> => Dest,
+    <<"body">> => Body},
+  {reply, {rpc, Request}, State}.
