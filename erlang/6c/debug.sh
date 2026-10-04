@@ -29,7 +29,7 @@ txn() {
 
 send() { printf "%s\n" "${1}"; }
 
-"${@:-txn}" | stdbuf -oL ./txn.erl
+"${@:-txn}" | stdbuf -oL ./server1.erl
 
 
 

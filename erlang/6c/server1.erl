@@ -5,7 +5,7 @@ Challenge #6c: Totally-Available, Read Committed Transactions
 https://www.fly.io/dist-sys/6c/
 """.
 -export([
-  server1/2, server_cast/3, server_call/4,
+  server1/2, server_cast/3, server_call/5,
   server_continue/3, txn_reply/3
 ]).
 -export([handle_txn/2]).
@@ -34,7 +34,7 @@ main([]) ->
 
 server() -> server1(fun handle_msg/2, #state{}).
 
-handle_msg(Line, State) when is_binary(Line) ->
+handle_msg({rpc, Line}, State) when is_binary(Line) ->
   {noreply, State, parse_line(Line)};
 
 handle_msg({init, Src, _Dest, Body}, State) ->
@@ -144,7 +144,7 @@ loop(standard_io) ->
   case io:get_line([]) of
     eof -> ok;
     Line ->
-      server ! {rpc, Line},
+      cast(server, {rpc, Line}),
       loop(standard_io)
   end.
 
@@ -216,8 +216,9 @@ generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
 
 %%% server1
 call(ServerRef, Request) -> 
-  ServerRef ! {call, self(), Request}, 
-  receive Reply -> Reply end.
+  ReplyAs = make_ref(),
+  ServerRef ! {call, self(), ReplyAs, Request}, 
+  receive {ReplyAs, Reply} -> Reply end.
 
 cast(ServerRef, Request) -> 
   ServerRef ! {cast, Request}, ok.
@@ -226,8 +227,8 @@ server1(Fn, State) ->
   receive
     {cast, Msg} ->
       server_cast(Fn, Msg, State);
-    {call, From, Msg} ->
-      server_call(Fn, From, Msg, State)
+    {call, From, Ref, Msg} ->
+      server_call(Fn, From, Ref, Msg, State)
   end.
 
 server_cast(Fn, Request, State0) ->
@@ -240,13 +241,13 @@ server_cast(Fn, Request, State0) ->
       ok
   end.
 
-server_call(Fn, From, Request, State0) ->
+server_call(Fn, From, Ref, Request, State0) ->
   case Fn(Request, State0) of
     {reply, Reply, State} ->
-      From ! Reply,
+      From ! {Ref, Reply},
       server1(Fn, State);
     {reply, Reply0, State, Info} ->
-      From !  Reply0,
+      From !  {Ref, Reply0},
       server_continue(Fn, Info, State);
     {noreply, State, Info} ->
       server_continue(Fn, Info, State);
