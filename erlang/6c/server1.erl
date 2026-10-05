@@ -6,7 +6,8 @@ https://www.fly.io/dist-sys/6c/
 """.
 -export([
   server1/2, server_cast/3, server_call/5,
-  server_continue/3, txn_reply/3
+  server_continue/3, txn_reply/3,
+  call/2, cast/2
 ]).
 -export([handle_txn/2]).
 -include("includes.hrl").
@@ -34,9 +35,6 @@ main([]) ->
 
 server() -> server1(fun handle_msg/2, #state{}).
 
-handle_msg({rpc, Line}, State) when is_binary(Line) ->
-  {noreply, State, parse_line(Line)};
-
 handle_msg({init, Src, _Dest, Body}, State) ->
   #{
     <<"msg_id">>   := MsgId,
@@ -56,12 +54,15 @@ handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#state{callbacks = Callbacks},
   erlang:apply(?MODULE, Function, [{Msg, Data}, NewState]);
-handle_msg({rpc, Request, {_Function, _Data} = Info}, State) ->
+handle_msg({rpc_request, Request, {_Function, _Data} = Info}, State) ->
   #{<<"body">> := #{<<"msg_id">> := MsgId}} = Request,
   Callbacks0 = State#state.callbacks,
   Callbacks = Callbacks0#{MsgId => Info},
   NewState = State#state{callbacks = Callbacks},
-  {reply, Request, NewState};
+  {noreply, NewState, {rpc_reply, Request}};
+handle_msg({rpc_reply, Reply}, State) ->
+  rpcout ! {rpc, Reply},
+  {noreply, State};
 handle_msg({_Tag, _Src, _Dest, _Body}, State) -> {ok, State}.
 
 handle_txn({txn, _, _, _} = Msg, State) ->
@@ -122,10 +123,10 @@ handle_txn({{cas_ok, _, _, _}, {_, _, _, Txn, Msg}}, State) ->
 handle_txn({{error, _, _, Body}, {_, _, _, _, Msg}}, State)
       when ?PRECONDITION_FAILED(Body) ->
   Backoff = rand:uniform(50),
-  {ok, _TRef} = timer:send_after(Backoff, {rpc, Msg}),
-  {ok, State};
+  {ok, _} = timer:apply_after(Backoff, fun cast/2, [server, Msg]),
+  {noreply, State};
 handle_txn(_Msg, State) ->
-  {ok, State}.
+  {noreply, State}.
 
 transact(Ops, Data0) ->
   lists:foldl(fun
@@ -144,7 +145,7 @@ loop(standard_io) ->
   case io:get_line([]) of
     eof -> ok;
     Line ->
-      cast(server, {rpc, Line}),
+      cast(server, parse_line(Line)),
       loop(standard_io)
   end.
 
@@ -187,14 +188,14 @@ reply(Dest, Body, #state{} = State) ->
     <<"src">>  => State#_.id,
     <<"dest">> => Dest,
     <<"body">> => Body},
-  {reply, Reply, State}.
+  {noreply, State, {rpc_reply, Reply}}.
 
 reply(Dest, Body, State, {_Fun, _Info} = EventData) ->
   Request = #{
     <<"src">>  => State#_.id,
     <<"dest">> => Dest,
     <<"body">> => Body},
-  {noreply, State, {rpc, Request, EventData}}.
+  {noreply, State, {rpc_request, Request, EventData}}.
 
 parse_line(Line) ->
   Msg = json:decode(Line),
@@ -263,4 +264,4 @@ txn_reply(Dest, Body, State) ->
     <<"src">>  => State#_.id,
     <<"dest">> => Dest,
     <<"body">> => Body},
-  {reply, {rpc, Request}, State}.
+  {reply, {rpc_request, Request}, State}.
