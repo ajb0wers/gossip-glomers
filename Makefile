@@ -1,5 +1,3 @@
-.PHONY: all check lint demo docker podman install serve clean
-
 all: check
 
 # Run demo locally (`install`) or containerized i.e.:
@@ -128,3 +126,5 @@ lint:
 
 clean:
 	find . -name 'erl_crash.dump' -delete
+
+.PHONY: all check lint demo docker podman install serve clean
