@@ -79,6 +79,13 @@ txn-6c:
 	--consistency-models read-committed \
 	--availability total --nemesis partition
 
+server1:
+	@cd maelstrom; \
+	./maelstrom test -w txn-rw-register --bin ../erlang/6c/server1.erl \
+	--node-count 2 --concurrency 2n --time-limit 20 --rate 1000 \
+	--consistency-models read-committed \
+	--availability total --nemesis partition
+#
 # Maelstrom CRDTs G-set
 g-set:
 	@cd maelstrom; \
