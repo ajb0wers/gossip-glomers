@@ -4,11 +4,6 @@
 Challenge #6c: Totally-Available, Read Committed Transactions
 https://www.fly.io/dist-sys/6c/
 """.
--export([
-  server1/2, server_cast/3, server_call/5,
-  server_continue/3,
-  call/2, cast/2
-]).
 -export([handle_txn/2]).
 -include("includes.hrl").
 
@@ -44,7 +39,7 @@ main([]) ->
 }.
 
 server() ->
-  server1(fun handle_msg/2, #state{}).
+  server(fun handle_msg/2, #state{}).
 
 handle_msg({init, Src, _Dest, Body}, State) ->
   #{
@@ -58,7 +53,6 @@ handle_msg({init, Src, _Dest, Body}, State) ->
     <<"in_reply_to">> => MsgId
   }, NewState);
 handle_msg({txn, _, _, _} = Msg, State) ->
-  %% handle_txn(Msg, State);
   Pid = spawn_link(fun txn/0),
   {noreply, State, call(Pid, Msg)};
 handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
@@ -66,12 +60,11 @@ handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   Callbacks0 = State#_.callbacks,
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#_{callbacks = Callbacks},
-  % erlang:apply(?MODULE, Function, [{Msg, Data}, NewState]);
   {noreply, NewState, call(Txn, Msg)};
-handle_msg({rpc_request, Request, Info}, State) ->
+handle_msg({rpc_request, From, Request}, State) ->
   #{<<"body">> := #{<<"msg_id">> := MsgId}} = Request,
   Callbacks0 = State#_.callbacks,
-  Callbacks = Callbacks0#{MsgId => Info},
+  Callbacks = Callbacks0#{MsgId => From},
   NewState = State#_{callbacks = Callbacks},
   {noreply, NewState, {rpc_reply, Request}};
 handle_msg({rpc_reply, Reply}, State) ->
@@ -79,12 +72,13 @@ handle_msg({rpc_reply, Reply}, State) ->
   {noreply, State};
 handle_msg({backoff, Msg}, State) ->
   Backoff = rand:uniform(50),
-  {ok, _} = timer:apply_after(Backoff, fun cast/2, [self(), Msg]),
+  Args = [self(), Msg],
+  {ok, _} = timer:apply_after(Backoff, fun cast/2, Args),
   {noreply, State};
-handle_msg({_Tag, _Src, _Dest, _Body}, State) -> {ok, State}.
+handle_msg(_, State) -> {noreply, State}.
 
 txn() ->
-  server1(fun handle_txn/2, #data{}).
+  server(fun handle_txn/2, #data{}).
 
 handle_txn({txn, _, Id, _} = Msg, #data{} = State) ->
   NewState = State#data{msg = Msg, id = Id},
@@ -93,7 +87,7 @@ handle_txn({txn, _, Id, _} = Msg, #data{} = State) ->
     ~"type" => ~"read",
     ~"key"  => ~"root",
     ~"msg_id" => MsgId
-  }, NewState, self());
+  }, NewState);
 handle_txn({read_ok, ~"lin-kv", _Dest, Body}, #data{root = ~""} = State) ->
   #{~"value" := Root} = Body,
   NewState = State#data{root = Root},
@@ -102,7 +96,7 @@ handle_txn({read_ok, ~"lin-kv", _Dest, Body}, #data{root = ~""} = State) ->
     ~"type" => ~"read",
     ~"key"  => [~"root", Root],
     ~"msg_id" => MsgId
-  }, NewState, self());
+  }, NewState);
 handle_txn({error, _Src, _Dest, Body}, #data{root = ~""} = State)
       when ?KEY_DOES_NOT_EXIST(Body) ->
   %% when root KEY_DOES_NOT_EXISTS(22) default data=#{}
@@ -123,7 +117,7 @@ handle_txn(transact, State) ->
     ~"key"  => [~"root", To],
     ~"value" => Data,
     ~"msg_id" => MsgId
-  }, NewState, self());
+  }, NewState);
 handle_txn({write_ok, _, _, _}, #data{root = From, to = To} = State) ->
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
@@ -133,7 +127,7 @@ handle_txn({write_ok, _, _, _}, #data{root = From, to = To} = State) ->
     ~"to"     => To,
     ~"msg_id" => MsgId,
     ~"create_if_not_exists" => true
-  }, State, self());
+  }, State);
 handle_txn({cas_ok, _, _, _}, #data{txn = Txn, msg = Msg} = State) ->
   {txn, Src, _, #{<<"msg_id">> := MsgId}} = Msg,
   ReplyMsg = message(State#_.id, Src, #{
@@ -148,6 +142,14 @@ handle_txn({error, _, _, Body}, #data{msg = Msg} = State)
   {reply, {backoff, Msg}, State, stop};
 handle_txn(_Msg, State) ->
   {noreply, State}.
+
+reply(Dest, Body, #state{} = State) ->
+  Reply = message(State#_.id, Dest, Body),
+  {noreply, State, {rpc_reply, Reply}};
+
+reply(Dest, Body, #data{} = State) ->
+  Request = message(State#_.id, Dest, Body),
+  {reply, {rpc_request, self(), Request}, State}.
 
 transact(Ops, Data0) ->
   lists:foldl(fun
@@ -178,18 +180,6 @@ rpcout() ->
       rpcout()
   end.
 
-%%%%%%%%%%%%%%%%%%%%%%%
-%%% Server Protocol %%%
-%%%%%%%%%%%%%%%%%%%%%%%
-
-reply(Dest, Body, #state{} = State) ->
-  Reply = message(State#_.id, Dest, Body),
-  {noreply, State, {rpc_reply, Reply}}.
-
-reply(Dest, Body, State, Info) ->
-  Request = message(State#_.id, Dest, Body),
-  {reply, {rpc_request, Request, Info}, State}.
-
 parse_line(Line) ->
   Msg = json:decode(Line),
   #{<<"src">>  := Src,
@@ -205,17 +195,10 @@ message(Src, Dest, Body) ->
     <<"body">> => Body
   }.
 
-uuid() ->
-  TsMs = os:system_time(millisecond),
-  Rand = crypto:strong_rand_bytes(10),
-  Uuid = generate(TsMs, Rand),
-  binary:encode_hex(Uuid).
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% Server Protocol %%%
+%%%%%%%%%%%%%%%%%%%%%%%
 
-generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
-    Ver = 2#0111, Var = 2#10,
-    <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
-
-%%% server1
 call(Server, Request) ->
   ReplyAs = make_ref(),
   Server ! {call, self(), ReplyAs, Request},
@@ -226,7 +209,7 @@ call(Server, Request) ->
 cast(Server, Request) ->
   Server ! {cast, Request}, ok.
 
-server1(Fn, State) ->
+server(Fn, State) ->
   receive
     {cast, Msg} ->
       server_cast(Fn, Msg, State);
@@ -237,7 +220,7 @@ server1(Fn, State) ->
 server_cast(Fn, Request, State0) ->
   case Fn(Request, State0) of
     {noreply, State} ->
-      server1(Fn, State);
+      server(Fn, State);
     {noreply, State, Info} ->
       server_continue(Fn, Info, State);
     stop ->
@@ -248,7 +231,7 @@ server_call(Fn, From, Ref, Request, State0) ->
   case Fn(Request, State0) of
     {reply, Reply, State} ->
       From ! {Ref, Reply},
-      server1(Fn, State);
+      server(Fn, State);
     {reply, Reply0, State, Info} ->
       From !  {Ref, Reply0},
       server_continue(Fn, Info, State);
@@ -260,4 +243,14 @@ server_call(Fn, From, Ref, Request, State0) ->
 
 server_continue(Fn, Request, State) ->
   server_cast(Fn, Request, State).
+uuid() ->
+  TsMs = os:system_time(millisecond),
+  Rand = crypto:strong_rand_bytes(10),
+  Uuid = generate(TsMs, Rand),
+  binary:encode_hex(Uuid).
+
+generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
+    Ver = 2#0111, Var = 2#10,
+    <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
+
 
