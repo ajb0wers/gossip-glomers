@@ -35,8 +35,8 @@ main([]) ->
 }.
 
 -record #data{
-  id   = <<>> :: nodeid(), 
-  root = <<>>, 
+  id   = <<>> :: nodeid(),
+  root = <<>>,
   to   = <<>>,
   txn  = [],
   data = #{},
@@ -67,7 +67,7 @@ handle_msg({_, _, _, #{~"in_reply_to" := ReplyId}} = Msg, State) ->
   Callbacks = maps:remove(ReplyId, Callbacks0),
   NewState = State#_{callbacks = Callbacks},
   % erlang:apply(?MODULE, Function, [{Msg, Data}, NewState]);
-  {noreply, NewState, call(Txn, Msg)}; 
+  {noreply, NewState, call(Txn, Msg)};
 handle_msg({rpc_request, Request, Info}, State) ->
   #{<<"body">> := #{<<"msg_id">> := MsgId}} = Request,
   Callbacks0 = State#_.callbacks,
@@ -84,7 +84,7 @@ handle_msg({backoff, Msg}, State) ->
 handle_msg({_Tag, _Src, _Dest, _Body}, State) -> {ok, State}.
 
 txn() ->
-  server1(fun handle_txn/2, #data{}). 
+  server1(fun handle_txn/2, #data{}).
 
 handle_txn({txn, _, Id, _} = Msg, #data{} = State) ->
   NewState = State#data{msg = Msg, id = Id},
@@ -94,22 +94,22 @@ handle_txn({txn, _, Id, _} = Msg, #data{} = State) ->
     ~"key"  => ~"root",
     ~"msg_id" => MsgId
   }, NewState, self());
-handle_txn({read_ok, ~"lin-kv", _Dest, Body}, #data{root=~""} = State) ->
+handle_txn({read_ok, ~"lin-kv", _Dest, Body}, #data{root = ~""} = State) ->
   #{~"value" := Root} = Body,
-  NewState = State#data{root=Root},
+  NewState = State#data{root = Root},
   MsgId = erlang:unique_integer([monotonic, positive]),
   reply(~"lin-kv", #{
     ~"type" => ~"read",
     ~"key"  => [~"root", Root],
     ~"msg_id" => MsgId
   }, NewState, self());
-handle_txn({error, _Src, _Dest, Body}, #data{root=~""} = State)
+handle_txn({error, _Src, _Dest, Body}, #data{root = ~""} = State)
       when ?KEY_DOES_NOT_EXIST(Body) ->
   %% when root KEY_DOES_NOT_EXISTS(22) default data=#{}
   handle_txn(transact, State);
 handle_txn({read_ok, _Src, _Dest, Body}, State) ->
   #{~"value" := Data} = Body,
-  NewState = State#data{data=Data},
+  NewState = State#data{data = Data},
   handle_txn(transact, NewState);
 handle_txn(transact, State) ->
   Data0 = State#_.data,
@@ -145,7 +145,7 @@ handle_txn({cas_ok, _, _, _}, #data{txn = Txn, msg = Msg} = State) ->
   {reply, Reply, State, stop};
 handle_txn({error, _, _, Body}, #data{msg = Msg} = State)
       when ?PRECONDITION_FAILED(Body) ->
-  {reply, {backoff, Msg}, State};
+  {reply, {backoff, Msg}, State, stop};
 handle_txn(_Msg, State) ->
   {noreply, State}.
 
@@ -216,14 +216,14 @@ generate(UnixTsMs, <<RandA:12, RandB:62, _:6>>) ->
     <<UnixTsMs:48, Ver:4, RandA:12, Var:2, RandB:62>>.
 
 %%% server1
-call(Server, Request) -> 
+call(Server, Request) ->
   ReplyAs = make_ref(),
-  Server ! {call, self(), ReplyAs, Request}, 
+  Server ! {call, self(), ReplyAs, Request},
   receive {ReplyAs, Reply} ->
     Reply
   end.
 
-cast(Server, Request) -> 
+cast(Server, Request) ->
   Server ! {cast, Request}, ok.
 
 server1(Fn, State) ->
