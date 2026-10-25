@@ -29,11 +29,11 @@ main([]) ->
 }.
 
 -record #data{
-  id   = <<>>  :: nodeid(),
+  id   = <<>> :: nodeid(),
   root = <<>>,
   to   = <<>>,
   txn  = [],
-  data = #{}   :: #{key() := value()},
+  data = #{} :: #{key() := value()},
   msg  = {}
 }.
 
