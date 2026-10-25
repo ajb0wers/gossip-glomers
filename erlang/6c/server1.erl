@@ -25,16 +25,15 @@ main([]) ->
 -record #state{
   id        = <<>> :: nodeid(),
   nodes     = []   :: [nodeid()],
-  callbacks = #{}  :: #{msgid() := any()},
-  data      = #{}  :: #{key() := value()}
+  callbacks = #{}  :: #{msgid() := any()}
 }.
 
 -record #data{
-  id   = <<>> :: nodeid(),
+  id   = <<>>  :: nodeid(),
   root = <<>>,
   to   = <<>>,
   txn  = [],
-  data = #{},
+  data = #{}   :: #{key() := value()},
   msg  = {}
 }.
 
