@@ -92,9 +92,9 @@ pn-counter:
 		--time-limit 20 --rate 10 
 
 # Build & run containerized Erlang & Maelstrom.
-docker podman:
-	"$@" build -t ajb0wers/gossip-glomers .
-	"$@" run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
 
 # Install local Maelstrom
 install:
