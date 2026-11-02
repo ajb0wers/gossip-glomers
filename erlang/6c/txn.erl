@@ -25,7 +25,7 @@ main([]) ->
 -record #state{
   id        = <<>> :: nodeid(),
   nodes     = []   :: [nodeid()],
-  callbacks = #{}  :: #{msgid() := any()}
+  callbacks = #{}  :: #{msgid() := pid()}
 }.
 
 -record #data{
