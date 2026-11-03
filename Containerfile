@@ -8,9 +8,8 @@ ed graphviz gnuplot curl default-jdk
 RUN mkdir /app
 WORKDIR /app
 
-RUN curl -SL \
-https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2 \
-| tar -xjC /app
+ARG RELEASE="https://github.com/jepsen-io/maelstrom/releases/download/v0.2.4/maelstrom.tar.bz2"
+RUN curl -SL "${RELEASE}" | tar -xjC /app
 
 COPY erlang/ /app/erlang/
 COPY Makefile .
