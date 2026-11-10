@@ -1,10 +1,6 @@
 all: check
 
-# Run demo locally (`install`) or containerized i.e.:
-# make install|docker|podman
-# make demo
-# make serve
-demo: echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
+demo: install echo-1 unique-ids broadcast-3e g-counter kafka-5c txn-6c
 
 # Challenge #1: Echo
 echo-1:
@@ -91,11 +87,6 @@ pn-counter:
 	./maelstrom test -w pn-counter --bin ../erlang/4/pn_counter.erl \
 		--time-limit 20 --rate 10 
 
-# Build & run containerized Erlang & Maelstrom.
-podman:
-	podman build -t ajb0wers/gossip-glomers .
-	podman run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
-
 # Install local Maelstrom
 install:
 	@test -d maelstrom || \
@@ -105,6 +96,13 @@ install:
 # Maelstrom results (http://0.0.0.0:8080).
 serve:
 	@cd maelstrom; ./maelstrom serve
+
+# Build & run containerized demo e.g.:
+# make podman
+# make demo serve
+podman:
+	podman build -t ajb0wers/gossip-glomers .
+	podman run -it --rm -p 8080:8080 --workdir /app/ ajb0wers/gossip-glomers
 
 check:
 	escript -s erlang/1/echo.erl
