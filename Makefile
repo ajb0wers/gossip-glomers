@@ -97,7 +97,7 @@ install:
 serve:
 	@cd maelstrom; ./maelstrom serve
 
-# Build & run containerized demo e.g.:
+# Build & run containerized Erlang e.g.:
 # make podman
 # make demo serve
 podman:
@@ -125,4 +125,4 @@ lint:
 clean:
 	find . -name 'erl_crash.dump' -delete
 
-.PHONY: all check lint demo docker podman install serve clean
+.PHONY: all check lint demo podman install serve clean
